@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ludivia — Jeux gratuits en ligne</title>
+<meta name="description" content="Jeux gratuits, quiz, réflexes, mémoire et défis quotidiens. Contenu original.">
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#0b1020;color:#f5f7ff}button{font:inherit;cursor:pointer}header{padding:28px 5%;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #202943;position:sticky;top:0;background:#0b1020ee;backdrop-filter:blur(10px);z-index:5}.logo{font-size:26px;font-weight:900}.logo span{color:#7c5cff}.stats{display:flex;gap:12px;flex-wrap:wrap}.pill{background:#151c31;border:1px solid #2a3555;border-radius:999px;padding:8px 14px}.hero{padding:50px 5% 35px;max-width:1100px;margin:auto}.hero h1{font-size:clamp(38px,7vw,72px);line-height:.95;margin:0 0 18px}.hero p{color:#aeb8d4;font-size:18px;max-width:720px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;padding:0 5% 50px;max-width:1200px;margin:auto}.card{background:#12192b;border:1px solid #27324e;border-radius:22px;padding:22px;transition:.2s}.card:hover{transform:translateY(-3px);border-color:#7c5cff}.card h2{margin:6px 0}.card p{color:#aeb8d4}.play{background:#7c5cff;color:white;border:0;border-radius:12px;padding:11px 15px;font-weight:800}.secondary{background:#1b2540;color:#dce3ff;border:0;border-radius:12px;padding:11px 15px}.bar{display:flex;gap:10px;flex-wrap:wrap}.overlay{position:fixed;inset:0;background:#060a14eF;display:none;align-items:center;justify-content:center;padding:20px;z-index:20}.modal{width:min(720px,100%);background:#12192b;border:1px solid #33405f;border-radius:24px;padding:26px}.modal h2{margin-top:0}.answers{display:grid;gap:10px;margin:20px 0}.answers button{background:#1a2440;border:1px solid #33405f;color:#fff;padding:14px;border-radius:14px;text-align:left}.answers button:hover{border-color:#7c5cff}.close{float:right;background:none;border:0;color:#aeb8d4;font-size:25px}.big{font-size:56px;font-weight:900;text-align:center;padding:25px}.target{height:260px;border-radius:20px;background:#0e1527;position:relative;overflow:hidden}.dot{position:absolute;width:48px;height:48px;border-radius:50%;background:#7c5cff;border:0}.notice{padding:14px 18px;background:#10182a;border:1px dashed #364564;border-radius:16px;color:#cbd4ed;margin-bottom:18px}
+</style>
+</head>
+<body>
+<header><div class="logo">Ludi<span>via</span></div><div class="stats"><div class="pill">XP <b id="xp">0</b></div><div class="pill">Niveau <b id="level">1</b></div><div class="pill">Série <b id="streak">0</b></div></div></header>
+<section class="hero"><div class="notice">🎯 Défi du jour : réussis 3 parties pour gagner un bonus de 100 XP.</div><h1>Joue. Réfléchis. Reviens.</h1><p>Une plateforme de divertissement gratuite avec des jeux simples, rapides et originaux. Les résultats sont enregistrés sur cet appareil.</p></section>
+<main class="grid" id="games"></main>
+<div class="overlay" id="overlay"><div class="modal"><button class="close" onclick="closeGame()">×</button><div id="game"></div></div></div>
+<script>
+const games=[
+{id:'quiz',icon:'🧠',title:'Quiz Éclair',desc:'10 questions originales de culture générale.'},
+{id:'memory',icon:'🃏',title:'Mémoire Flash',desc:'Mémorise une suite et reproduis-la.'},
+{id:'reaction',icon:'⚡',title:'Réflexe',desc:'Attends le signal puis clique le plus vite possible.'},
+{id:'odd',icon:'🔎',title:'Intrus',desc:'Trouve la forme différente avant le temps.'},
+{id:'target',icon:'🎯',title:'Cible Mobile',desc:'Tape la cible autant de fois que possible.'},
+{id:'sequence',icon:'🔢',title:'Suite Mystère',desc:'Trouve le prochain nombre de la suite.'}
+];
+const state=JSON.parse(localStorage.getItem('ludivia_state')||'{"xp":0,"streak":0,"played":0}');
+function save(){localStorage.setItem('ludivia_state',JSON.stringify(state));renderStats()}
+function renderStats(){document.querySelector('#xp').textContent=state.xp;document.querySelector('#level').textContent=Math.floor(state.xp/500)+1;document.querySelector('#streak').textContent=state.streak}
+function addXP(n){state.xp+=n;state.played++;state.streak++;if(state.played===3)state.xp+=100;save()}
+function render(){document.querySelector('#games').innerHTML=games.map(g=>`<article class="card"><div style="font-size:35px">${g.icon}</div><h2>${g.title}</h2><p>${g.desc}</p><div class="bar"><button class="play" onclick="start('${g.id}')">Jouer</button></div></article>`).join('');renderStats()}
+function openGame(html){document.querySelector('#game').innerHTML=html;document.querySelector('#overlay').style.display='flex'}
+function closeGame(){document.querySelector('#overlay').style.display='none'}
+function start(id){({quiz,startMemory,reaction,odd,target,sequence}[id]||(()=>{}))()}
+const qs=[['Quelle planète est surnommée la planète rouge ?',['Mars','Vénus','Jupiter','Mercure'],0],['Combien de côtés a un hexagone ?',['5','6','7','8'],1],['Quel océan est le plus vaste ?',['Atlantique','Indien','Pacifique','Arctique'],2],['Quel gaz est majoritaire dans l’air terrestre ?',['Oxygène','Azote','Hydrogène','Hélium'],1],['Combien de minutes compte une heure ?',['30','45','60','90'],2]];
+function quiz(){let i=0,score=0;function q(){let [t,a,c]=qs[i];openGame(`<h2>Quiz Éclair</h2><p>${i+1}/${qs.length} — ${t}</p><div class="answers">${a.map((x,j)=>`<button onclick="quizAns(${j},${c})">${x}</button>`).join('')}</div>`)}window.quizAns=(j,c)=>{if(j===c)score++;i++;if(i<qs.length)q();else{addXP(score*30+20);openGame(`<h2>Terminé</h2><div class="big">${score}/${qs.length}</div><p>Tu gagnes ${score*30+20} XP.</p><button class="play" onclick="closeGame()">Continuer</button>`)}};q()}
+function startMemory(){let seq=Array.from({length:5},()=>Math.floor(Math.random()*4));let shown=seq.join(' • ');openGame(`<h2>Mémoire Flash</h2><p>Mémorise cette suite :</p><div class="big">${shown}</div><button class="play" onclick="memoryInput('${seq.join('')}')">J'ai mémorisé</button>`)}
+function memoryInput(seq){openGame(`<h2>Mémoire Flash</h2><p>Entre les 5 chiffres, sans espaces.</p><input id="mem" maxlength="5" inputmode="numeric" style="width:100%;padding:15px;border-radius:12px;border:1px solid #33405f;background:#0e1527;color:#fff"><br><br><button class="play" onclick="checkMem('${seq}')">Valider</button>`)}
+function checkMem(seq){let v=document.querySelector('#mem').value;let ok=v===seq;addXP(ok?120:20);openGame(`<h2>${ok?'Bravo !':'Raté'}</h2><p>La suite correcte était <b>${seq}</b>.</p><button class="play" onclick="closeGame()">Fermer</button>`)}
+function reaction(){openGame(`<h2>Réflexe</h2><p>Attends que le bouton devienne vert, puis clique.</p><button id="react" class="secondary" style="width:100%;height:120px">Attends…</button>`);let t=Date.now()+1200+Math.random()*2500;let timer=setInterval(()=>{if(Date.now()>=t){clearInterval(timer);let b=document.querySelector('#react');if(!b)return;b.textContent='CLIQUE !';b.style.background='#2ecc71';let start=Date.now();b.onclick=()=>{let ms=Date.now()-start;addXP(Math.max(20,140-Math.floor(ms/10)));openGame(`<h2>${ms} ms</h2><p>Plus c’est petit, mieux c’est.</p>`);}}},50)}
+function odd(){let n=16;let odd=Math.floor(Math.random()*n);openGame(`<h2>Trouve l'intrus</h2><p>Une case est différente.</p><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">${Array.from({length:n},(_,i)=>`<button style="height:70px;border-radius:14px;border:1px solid #33405f;background:${i===odd?'#8e72ff':'#7c5cff'}" onclick="oddPick(${i===odd})"></button>`).join('')}</div>`)}
+function oddPick(ok){addXP(ok?110:10);openGame(`<h2>${ok?'Trouvé !':'Pas cette case'}</h2><button class="play" onclick="closeGame()">Fermer</button>`)}
+function target(){openGame(`<h2>Cible Mobile</h2><p>30 secondes. Touche la cible le plus possible.</p><div class="target" id="targetArea"></div><p>Score : <b id="ts">0</b></p>`);let area=document.querySelector('#targetArea'),score=0,end=Date.now()+30000;function spawn(){if(Date.now()>end){addXP(score*5+20);openGame(`<h2>Temps écoulé</h2><div class="big">${score}</div><button class="play" onclick="closeGame()">Fermer</button>`);return}area.innerHTML='<button class="dot"></button>';let d=area.querySelector('.dot');d.style.left=Math.random()*85+'%';d.style.top=Math.random()*78+'%';d.onclick=()=>{score++;document.querySelector('#ts').textContent=score;spawn()}}spawn();}
+function sequence(){let a=Math.floor(Math.random()*5)+1,step=Math.floor(Math.random()*5)+2;let nums=[a,a+step,a+2*step,a+3*step];openGame(`<h2>Suite Mystère</h2><p>${nums.join(' • ')} • ?</p><input id="seq" type="number" style="width:100%;padding:15px;border-radius:12px;border:1px solid #33405f;background:#0e1527;color:#fff"><br><br><button class="play" onclick="seqCheck(${a+4*step})">Valider</button>`)}
+function seqCheck(ans){let v=Number(document.querySelector('#seq').value);let ok=v===ans;addXP(ok?100:15);openGame(`<h2>${ok?'Correct':'Incorrect'}</h2><p>La bonne réponse était <b>${ans}</b>.</p><button class="play" onclick="closeGame()">Continuer</button>`)}
+render();
+</script>
+</body>
+</html>
