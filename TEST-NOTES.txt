@@ -1,0 +1,1 @@
+Verified before publishing: static HTML/JS has no top-level module import; all UI handlers bind synchronously. Required tests: type in prompt, example chips, modes, new, help, diagnostic, history, close, delete one, delete all, download history, share app, launch model, stop generation, save story, copy, download TXT, download JSON, share, print, delete story.
