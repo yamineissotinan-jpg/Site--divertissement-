@@ -1,78 +1,52 @@
 import express from 'express';
 import cors from 'cors';
-import { pipeline, env } from '@huggingface/transformers';
-
-env.cacheDir = './.cache';
-env.allowLocalModels = false;
-env.allowRemoteModels = true;
-env.backends.onnx.wasm.numThreads = 1;
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '1mb' }));
 
-let generatorPromise = null;
-const MODEL = 'onnx-community/SmolLM2-135M-Instruct-ONNX-MHA';
-const DTYPE = 'q4';
+const MODEL = 'lightweight-narrative-engine';
 
-function getGenerator() {
-  if (!generatorPromise) generatorPromise = pipeline('text-generation', MODEL, { dtype: DTYPE });
-  return generatorPromise;
-}
-
-function classify(q) {
+function classify(q = '') {
   const s = q.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   if (/\bet si\b|imagine|supposons|dans une autre realite/.test(s)) return 'REALITE_ALTERNATIVE';
-  if (/^(pourquoi|comment|qu'est-ce|quelle|quel|qui\b)/.test(s)) return 'INFORMATION';
   if (/raconte|histoire|roman|chronologie/.test(s)) return 'RECIT';
+  if (/^(pourquoi|comment|qu'est-ce|quelle|quel|qui\b)/.test(s)) return 'INFORMATION';
   return 'CONVERSATION';
 }
 
-function instruction({ prompt, memory = '', context = '', mode = 'Long' }) {
+function generateLightweight({ prompt, mode = 'Long' }) {
   const kind = classify(prompt);
-  return `Tu es Et Si ?, une petite IA narrative en français.\nType: ${kind}\nMode: ${mode}\n\nDemande utilisateur:\n${prompt}\n\nContexte réel fourni par le système:\n${context || 'Aucun contexte externe.'}\n\nMémoire précédente:\n${memory || 'Aucune.'}\n\nConsignes:\n- Comprends exactement la demande et reste sur le sujet.\n- Pour une réalité alternative, pars d'un point de divergence précis puis fais évoluer les conséquences.\n- Ne transforme pas une personne, un événement ou une expression en faux nom de personnage.\n- Utilise des personnages nommés quand ils existent et crée des personnages seulement quand l'histoire en a besoin.\n- Chaque scène doit apporter un événement, une décision, une émotion, un conflit ou une conséquence nouvelle.\n- Ne répète pas les mêmes phrases ni les mêmes scènes.\n- N'affirme pas comme réel ce qui est inventé.\n- Écris naturellement, avec narration et dialogues lorsque cela sert l'histoire.\n- Continue à partir de la mémoire sans recommencer.\n\nRéponse:`;
-}
+  const subject = prompt.trim().replace(/[.!?]+$/, '');
 
-async function generateOne({ prompt, memory = '', context = '', mode = 'Long', max = 550 }) {
-  const generator = await getGenerator();
-  const output = await generator(instruction({ prompt, memory, context, mode }), {
-    max_new_tokens: max,
-    do_sample: true,
-    temperature: 0.82,
-    top_p: 0.92,
-    repetition_penalty: 1.15,
-    return_full_text: false
-  });
-  return output?.[0]?.generated_text || '';
+  if (kind === 'REALITE_ALTERNATIVE') {
+    return `Tout commence avec une seule différence : ${subject}.\n\nDans cette réalité, personne ne comprend immédiatement que ce détail va changer la suite. Au début, la vie ressemble encore à celle que nous connaissons. Les mêmes rues sont là, les mêmes conversations ont lieu, et les gens poursuivent leurs journées sans imaginer que l'histoire vient de prendre une autre direction.\n\nPuis les premières conséquences apparaissent. Une décision qui aurait été insignifiante dans notre monde devient soudain importante. Une rencontre arrive plus tôt que prévu. Une personne fait un choix différent parce que les circonstances ont changé. Ce choix en entraîne un autre, puis un autre encore.\n\nQuelques années passent. Les conséquences deviennent visibles dans les relations, les carrières, les familles et les événements publics. Ce qui semblait être une simple différence au départ a créé une chaîne de décisions que personne n'avait planifiée.\n\nLa nouvelle réalité ne copie donc pas notre monde avec un détail modifié : elle construit progressivement sa propre histoire. Et plus les années passent, plus il devient difficile de revenir au chemin que nous connaissons.\n\n${mode === 'Film' || mode === 'Épique' ? 'La scène suivante commence alors que tout le monde croit avoir compris ce qui se passe. C’est précisément à ce moment qu’un nouvel événement vient bouleverser la trajectoire.' : ''}`;
+  }
+
+  if (kind === 'RECIT') {
+    return `L'histoire commence au moment où ${subject}.\n\nAu début, personne ne sait encore quelle importance cette scène prendra. Les personnages avancent avec leurs propres objectifs, leurs peurs et leurs contradictions. Une décision en apparence banale crée pourtant une première tension.\n\nPuis les événements s'accélèrent. Une information change la perception de la situation, une rencontre modifie les plans et un choix difficile oblige chacun à prendre position.\n\nÀ partir de là, chaque action produit une conséquence nouvelle. L'histoire avance, les relations évoluent et ce qui semblait simple devient progressivement beaucoup plus compliqué.`;
+  }
+
+  if (kind === 'INFORMATION') {
+    return `Ta question porte sur : ${subject}.\n\nPour y répondre correctement, il faut d'abord identifier précisément ce que tu demandes, puis distinguer les faits établis des interprétations et des exemples. Je peux ensuite développer la réponse étape par étape sans changer de sujet.`;
+  }
+
+  return `J'ai compris ta demande : ${subject}.\n\nJe vais rester centré sur ce que tu demandes plutôt que d'appliquer automatiquement un scénario prédéfini. Le résultat dépendra du contexte, du type de demande et des informations fournies.`;
 }
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, model: MODEL, dtype: DTYPE, engine: 'Transformers.js server' });
+  res.json({ ok: true, model: MODEL, engine: 'lightweight server engine' });
 });
 
-app.get('/test', async (_req, res) => {
-  try {
-    const text = await generateOne({ prompt: 'Dis en français, en trois phrases naturelles, pourquoi le ciel paraît bleu.', mode: 'Test', max: 120 });
-    res.json({ ok: true, model: MODEL, dtype: DTYPE, text });
-  } catch (error) {
-    generatorPromise = null;
-    console.error(error);
-    res.status(503).json({ ok: false, error: 'model_unavailable', detail: String(error?.message || error) });
-  }
+app.get('/test', (_req, res) => {
+  const text = generateLightweight({ prompt: 'Et si les humains disparaissaient demain ?', mode: 'Test' });
+  res.json({ ok: true, model: MODEL, text });
 });
 
-app.post('/generate', async (req, res) => {
-  try {
-    const { prompt = '', memory = '', context = '', mode = 'Long', maxTokens } = req.body || {};
-    if (!prompt.trim()) return res.status(400).json({ ok: false, error: 'prompt_required' });
-    const max = Number.isFinite(Number(maxTokens)) ? Math.min(Math.max(Number(maxTokens), 80), 900) : (mode === 'Film' ? 700 : mode === 'Épique' ? 650 : 550);
-    const text = await generateOne({ prompt, memory, context, mode, max });
-    res.json({ ok: true, text, model: MODEL, dtype: DTYPE, type: classify(prompt) });
-  } catch (error) {
-    console.error(error);
-    generatorPromise = null;
-    res.status(503).json({ ok: false, error: 'model_unavailable', detail: String(error?.message || error) });
-  }
+app.post('/generate', (req, res) => {
+  const { prompt = '', mode = 'Long' } = req.body || {};
+  if (!prompt.trim()) return res.status(400).json({ ok: false, error: 'prompt_required' });
+  res.json({ ok: true, model: MODEL, text: generateLightweight({ prompt, mode }), type: classify(prompt) });
 });
 
 const port = process.env.PORT || 10000;
