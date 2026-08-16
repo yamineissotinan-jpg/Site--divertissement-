@@ -1,0 +1,1 @@
+Render diagnosis: the process starts successfully and listens on PORT. The failure occurs after model use is attempted, not during node app.js startup.
