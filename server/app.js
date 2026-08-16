@@ -5,16 +5,18 @@ import { pipeline, env } from '@huggingface/transformers';
 env.cacheDir = './.cache';
 env.allowLocalModels = false;
 env.allowRemoteModels = true;
+env.backends.onnx.wasm.numThreads = 1;
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '1mb' }));
 
 let generatorPromise = null;
-const MODEL = 'onnx-community/SmolLM2-135M-Instruct-ONNX';
+const MODEL = 'onnx-community/SmolLM2-135M-Instruct-ONNX-MHA';
+const DTYPE = 'q4';
 
 function getGenerator() {
-  if (!generatorPromise) generatorPromise = pipeline('text-generation', MODEL, { dtype: 'q4f16' });
+  if (!generatorPromise) generatorPromise = pipeline('text-generation', MODEL, { dtype: DTYPE });
   return generatorPromise;
 }
 
@@ -45,13 +47,13 @@ async function generateOne({ prompt, memory = '', context = '', mode = 'Long', m
 }
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, model: MODEL, engine: 'Transformers.js server' });
+  res.json({ ok: true, model: MODEL, dtype: DTYPE, engine: 'Transformers.js server' });
 });
 
 app.get('/test', async (_req, res) => {
   try {
     const text = await generateOne({ prompt: 'Dis en français, en trois phrases naturelles, pourquoi le ciel paraît bleu.', mode: 'Test', max: 120 });
-    res.json({ ok: true, model: MODEL, text });
+    res.json({ ok: true, model: MODEL, dtype: DTYPE, text });
   } catch (error) {
     generatorPromise = null;
     console.error(error);
@@ -65,7 +67,7 @@ app.post('/generate', async (req, res) => {
     if (!prompt.trim()) return res.status(400).json({ ok: false, error: 'prompt_required' });
     const max = Number.isFinite(Number(maxTokens)) ? Math.min(Math.max(Number(maxTokens), 80), 900) : (mode === 'Film' ? 700 : mode === 'Épique' ? 650 : 550);
     const text = await generateOne({ prompt, memory, context, mode, max });
-    res.json({ ok: true, text, model: MODEL, type: classify(prompt) });
+    res.json({ ok: true, text, model: MODEL, dtype: DTYPE, type: classify(prompt) });
   } catch (error) {
     console.error(error);
     generatorPromise = null;
