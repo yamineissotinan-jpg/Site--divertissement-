@@ -1,1 +1,1 @@
-{"name":"etsi-ai-server","private":true,"type":"module","engines":{"node":">=18"},"scripts":{"start":"node app.js"},"dependencies":{"@huggingface/transformers":"^4.0.1","cors":"^2.8.5","express":"^5.1.0"}}
+{"name":"etsi-ai-server","private":true,"type":"module","engines":{"node":">=18"},"scripts":{"start":"node app.js"},"dependencies":{"cors":"^2.8.5","express":"^5.1.0"}}
