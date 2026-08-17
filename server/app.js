@@ -1,11 +1,13 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'node:path';
 
 const app = express();
 const MODEL = 'lightweight-narrative-engine-v5';
 const PORT = Number(process.env.PORT || 10000);
 const MAX_PROMPT = 2500;
 const RESEARCH_TIMEOUT_MS = 3500;
+const FRONTEND = path.resolve(process.cwd(), '../index.html');
 
 app.disable('x-powered-by');
 app.use(cors());
@@ -218,13 +220,8 @@ async function generate(prompt, mode = 'Long', allowResearch = true) {
   };
 }
 
-app.get('/', (_req, res) => res.status(200).json({
-  ok: true,
-  service: 'Et Si? AI',
-  model: MODEL,
-  status: 'online',
-  endpoints: ['/health', '/test', '/generate']
-}));
+// Render runs this server from /server while index.html lives at the repository root.
+app.get('/', (_req, res) => res.sendFile(FRONTEND));
 
 app.get('/health', (_req, res) => res.status(200).json({
   ok: true,
@@ -235,7 +232,6 @@ app.get('/health', (_req, res) => res.status(200).json({
 
 app.get('/test', async (_req, res) => {
   try {
-    // Health/test must never depend on an external research service.
     const result = await generate('Et si les humains disparaissaient demain ?', 'Test', false);
     res.status(200).json({ ok: true, model: MODEL, ...result });
   } catch (error) {
