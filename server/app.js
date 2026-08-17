@@ -5,205 +5,130 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '1mb' }));
 
-const MODEL = 'lightweight-narrative-engine-v3';
+const MODEL = 'lightweight-narrative-engine-v4';
 
-function normalize(text = '') {
-  return String(text).trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-}
+const normalize = (v='') => String(v).trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+const clean = (v='') => String(v).trim().replace(/[.!?]+$/,'');
 
-function clean(text = '') {
-  return String(text).trim().replace(/[.!?]+$/, '');
-}
-
-function classify(prompt = '') {
-  const s = normalize(prompt);
+function classify(prompt='') {
+  const s=normalize(prompt);
   if (/\bet si\b|\bimagine\b|\bsupposons\b|\bdans une autre realite\b|\bque se passerait il\b|\bque se passerait-il\b/.test(s)) return 'REALITE_ALTERNATIVE';
-  if (/\braconte\b|\bhistoire\b|\broman\b|\bfiction\b|\bconte\b|\bchronologie\b/.test(s)) return 'RECIT';
+  if (/\braconte\b|\bhistoire\b|\broman\b|\bfiction\b|\bconte\b/.test(s)) return 'RECIT';
   if (/^(pourquoi|comment|qu est ce|qu'est-ce|quelle|quel|qui\b|combien|quand|ou\b)/.test(s)) return 'INFORMATION';
   return 'CONVERSATION';
 }
 
-function scenario(prompt = '') {
-  const s = normalize(prompt);
+function scenario(prompt='') {
+  const s=normalize(prompt);
   if (/(humain|humanite)/.test(s) && /(dispar|plus aucun|plus personne)/.test(s)) return 'HUMANS_GONE';
   if (/\bbeyonce\b/.test(s)) return 'BEYONCE';
   if (/\btitanic\b/.test(s)) return 'TITANIC';
   if (/\bnapoleon\b|\bwaterloo\b/.test(s)) return 'NAPOLEON';
-  if (/\bterre\b/.test(s) && /(rotation|tourne|tournait)/.test(s)) return 'EARTH';
+  if (/\binternet\b/.test(s)) return 'INTERNET_GONE';
+  if (/\bterre\b/.test(s) && /\bdeux lunes?\b/.test(s)) return 'TWO_MOONS';
   return 'GENERAL';
 }
 
-async function research(query = '') {
-  const q = clean(query).replace(/^et si\s+/i, '');
-  if (!q) return [];
+async function research(query='') {
+  const q=clean(query).replace(/^et si\s+/i,'');
+  if(!q) return [];
   try {
-    const url = 'https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=' + encodeURIComponent(q) + '&format=json&origin=*';
-    const response = await fetch(url, { headers: { 'User-Agent': 'EtSiAI/1.0' } });
-    if (!response.ok) return [];
-    const data = await response.json();
-    const rows = Array.isArray(data?.query?.search) ? data.query.search : [];
-    return rows.slice(0, 5).map((row) => ({
-      title: row.title,
-      snippet: String(row.snippet || '').replace(/<[^>]+>/g, '')
-    }));
-  } catch {
-    return [];
-  }
+    const url='https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch='+encodeURIComponent(q)+'&srlimit=6&format=json&origin=*';
+    const r=await fetch(url,{headers:{'User-Agent':'EtSiAI/2.0'}});
+    if(!r.ok) return [];
+    const d=await r.json();
+    return Array.isArray(d?.query?.search)?d.query.search.slice(0,6).map(x=>({title:x.title,snippet:String(x.snippet||'').replace(/<[^>]+>/g,'')})):[];
+  } catch { return []; }
 }
 
-function chapter(title, paragraphs) {
-  return `CHAPITRE — ${title}\n\n${paragraphs.join('\n\n')}`;
+function chapter(title, paragraphs) { return `CHAPITRE — ${title}\n\n${paragraphs.join('\n\n')}`; }
+function longChain(seed, steps) {
+  return steps.map((x,i)=>`${x}${i===steps.length-1?'':' '}`).join('\n\n');
 }
 
 function humansGone() {
+  const c=[];
+  c.push(chapter('Le dernier matin',[
+    'À 7 h 42, les villes fonctionnent encore comme si rien n’avait changé. Les feux de circulation changent de couleur, les ascenseurs terminent leurs trajets et des téléphones continuent de vibrer dans des appartements désormais silencieux.',
+    'Puis la réalité apparaît : tous les humains ont disparu, partout sur Terre, au même instant. Il n’y a pas de survivants cachés dans une capitale, un bunker ou un village isolé.',
+    'Les premières minutes sont étrangement ordinaires. Les bâtiments restent debout, les voitures restent garées et les ordinateurs continuent d’exécuter les tâches qu’ils avaient reçues avant la disparition.',
+    'Dans une maison de Cotonou, un réfrigérateur ronronne encore. À l’hôpital, certains appareils poursuivent leurs cycles automatiques. Dans les aéroports, des systèmes de contrôle continuent de fonctionner avant que l’absence des opérateurs ne devienne impossible à compenser.'
+  ]));
+  c.push(chapter('Les premières heures',[
+    'Les avions deviennent l’un des premiers problèmes visibles. Un appareil qui peut voler sans intervention humaine pendant quelques minutes ne peut pas pour autant terminer indéfiniment son trajet sans équipage.',
+    'Les accidents ne surviennent pas tous au même moment. Ils dépendent de l’altitude, du carburant, de l’automatisation et des conditions météorologiques.',
+    'Sur les routes, certaines voitures s’arrêtent simplement après avoir épuisé leur carburant. D’autres provoquent des collisions. Les feux continuent de changer, mais personne ne vient réparer les installations endommagées.',
+    'Les réseaux électriques connaissent une situation différente selon les pays. Les protections automatiques peuvent isoler certaines pannes, mais elles ne peuvent pas remplacer les équipes qui surveillent, entretiennent et réparent les infrastructures.'
+  ]));
+  c.push(chapter('La première semaine',[
+    'L’eau potable devient progressivement un problème majeur. Les stations de pompage peuvent fonctionner un certain temps, mais elles dépendent de l’électricité, de systèmes mécaniques et d’une maintenance régulière.',
+    'Les supermarchés deviennent des bâtiments silencieux remplis de nourriture dont une partie se dégrade rapidement. Les aliments réfrigérés cessent d’être conservés lorsque les réseaux électriques tombent.',
+    'Les chiens et les chats connaissent des destins différents. Un animal enfermé derrière une porte peut mourir rapidement, tandis qu’un autre parvient à sortir et découvre un environnement où les humains ne contrôlent plus les ressources.',
+    'Dans les campagnes, certaines espèces domestiques ont davantage de chances de survivre. Les animaux capables de trouver de l’eau et de la nourriture sans assistance humaine commencent progressivement à occuper les espaces abandonnés.'
+  ]));
+  c.push(chapter('Les premiers mois',[
+    'Les villes ne deviennent pas immédiatement des forêts. Les bâtiments sont encore là, les routes sont encore visibles et de nombreux objets témoignent de la présence récente de l’humanité.',
+    'Mais l’entretien s’arrête partout en même temps. Une petite fissure qui aurait normalement été réparée devient une entrée pour l’eau. L’eau accélère ensuite la dégradation des matériaux.',
+    'Les égouts et les stations de traitement cessent progressivement de fonctionner. Certaines régions sont inondées, d’autres connaissent des problèmes sanitaires et certaines infrastructures deviennent dangereuses.',
+    'Les satellites continuent leur trajectoire pendant un certain temps, mais les systèmes qui dépendent d’une maintenance terrestre finissent par perdre des capacités. La disparition humaine devient alors visible même depuis l’espace.'
+  ]));
+  c.push(chapter('Dix ans plus tard',[
+    'Une décennie suffit pour transformer profondément les espaces urbains. Les plantes occupent les fissures, les toits se dégradent et les bâtiments exposés à l’humidité commencent à perdre leurs parties les plus fragiles.',
+    'Certaines espèces animales profitent de l’absence des humains. D’autres disparaissent parce qu’elles dépendaient entièrement de l’élevage ou de la protection humaine.',
+    'Les infrastructures les plus solides restent visibles, mais leur fonction d’origine devient de moins en moins évidente. Une autoroute peut encore traverser une région tout en étant devenue impraticable.',
+    'La Terre n’est pas devenue soudainement sauvage. Elle est devenue une planète où les ruines d’une civilisation industrielle coexistent avec des écosystèmes qui reprennent progressivement leur place.'
+  ]));
+  c.push(chapter('Un siècle plus tard',[
+    'Cent ans passent. Les métaux ont rouillé, les vitres ont disparu de nombreux bâtiments et les racines ont pénétré des structures qui semblaient autrefois permanentes.',
+    'Les grandes constructions ne disparaissent pas toutes au même rythme. Le climat, les matériaux, l’exposition à l’eau et la végétation déterminent leur durée de survie.',
+    'Une bibliothèque peut encore contenir des milliers de livres, mais l’information qu’elle contient n’est plus organisée autour d’une société capable de l’utiliser.',
+    'Une route disparaît sous la végétation. Un barrage peut encore être reconnaissable. Une ancienne ville devient progressivement un paysage où les humains sont devenus une trace archéologique récente.'
+  ]));
+  c.push(chapter('Mille ans plus tard',[
+    'Mille ans après la disparition, une grande partie de la civilisation visible depuis la surface a été transformée. Certaines structures massives restent identifiables, mais beaucoup d’objets ordinaires ont disparu.',
+    'Les espèces animales et végétales ont eu des siècles pour se réorganiser sans la pression quotidienne de milliards d’humains.',
+    'Les anciennes frontières politiques n’ont plus aucune importance. Les anciennes capitales ne sont plus des capitales ; ce sont des lieux géographiques parmi d’autres.',
+    'La planète n’a pas oublié qu’une civilisation a existé. Elle en conserve encore les traces, mais elle ne fonctionne plus selon les besoins de cette civilisation.'
+  ]));
+  return c.join('\n\n');
+}
+
+function beyonceScenario(facts=[]) {
+  const researchNote=facts.length?`Les recherches ont fourni des repères biographiques sur Beyoncé, notamment son parcours musical et son évolution professionnelle. Ces faits servent de point de départ ; la suite est volontairement fictive.`:'Les données biographiques détaillées n’ont pas pu être récupérées automatiquement ; la partie réelle doit donc être considérée comme provisoire.';
   return [
-    chapter('Le dernier matin', [
-      'À 7 h 42, les villes fonctionnent encore comme si rien n’avait changé. Les feux de circulation changent de couleur, les ascenseurs terminent leurs trajets et des téléphones continuent de vibrer dans des appartements désormais silencieux.',
-      'Puis la réalité apparaît : les humains ont disparu. Pas une ville. Pas un pays. Tous les humains, partout sur Terre, au même instant.',
-      'Les premières minutes ne ressemblent pourtant pas à la fin du monde. Les bâtiments sont debout, les voitures sont garées, les serveurs fonctionnent et certains avions poursuivent leur trajectoire avant que l’absence de leurs équipages ne provoque les premiers accidents.',
-      'Dans une maison de Cotonou, un réfrigérateur continue de ronronner. Personne ne sait qu’il vient d’entrer dans les dernières heures de son fonctionnement normal.'
-    ]),
-    chapter('Les sept premiers jours', [
-      'Les systèmes automatisés continuent pendant un temps, mais ils ne savent pas remplacer les millions de personnes qui surveillaient, réparaient et approvisionnaient la civilisation.',
-      'Les réseaux électriques deviennent instables. Certaines installations se mettent automatiquement en sécurité. D’autres continuent de produire jusqu’à ce qu’une panne locale provoque une nouvelle panne ailleurs.',
-      'Les animaux domestiques deviennent rapidement vulnérables. Certains chiens et chats trouvent des sorties et apprennent à chercher de la nourriture. D’autres restent enfermés derrière des portes que personne ne viendra ouvrir.',
-      'L’eau courante disparaît progressivement dans les régions où les stations de pompage dépendent d’une alimentation et d’une maintenance continues.'
-    ]),
-    chapter('Les premières années', [
-      'Les villes commencent à changer. Les mauvaises herbes envahissent les trottoirs, les racines soulèvent l’asphalte et l’eau s’infiltre dans des bâtiments qui étaient autrefois inspectés chaque année.',
-      'Les satellites ne disparaissent pas instantanément. Certains continuent à transmettre pendant des années, mais personne ne remplace les équipements défaillants et personne ne lance les engins qui auraient dû prendre leur relève.',
-      'Les animaux capables de s’adapter aux villes abandonnées profitent de cet immense territoire nouveau. Certaines espèces domestiques disparaissent tandis que d’autres retournent progressivement à l’état sauvage.',
-      'Le monde ne devient donc pas immédiatement une jungle. Il devient une civilisation abandonnée, encore reconnaissable, mais incapable de se réparer.'
-    ]),
-    chapter('Un siècle plus tard', [
-      'Cent ans passent. Les métaux rouillent, les vitres éclatent, les toits s’effondrent et les arbres traversent les anciens bâtiments.',
-      'Certaines infrastructures massives résistent beaucoup plus longtemps que les objets ordinaires. D’autres disparaissent presque entièrement.',
-      'Les traces de l’humanité deviennent de plus en plus rares. Une route disparaît sous la végétation. Une bibliothèque reste debout mais ne contient plus personne capable de lire ses livres.',
-      'La Terre n’efface pas l’humanité en une journée. Elle l’efface lentement, morceau par morceau, jusqu’à ce que la planète ressemble davantage à un monde qui a hérité des ruines d’une civilisation qu’à un monde qui l’a simplement perdue.'
-    ])
+    chapter('Avant la divergence',[`Dans notre réalité, Beyoncé est née en 1981 à Houston, au Texas, et a grandi dans une famille qui l’a fortement accompagnée dans son parcours artistique. ${researchNote}`,'Dans notre réalité alternative, une seule différence est imposée : Beyoncé est blanche. Tout le reste ne change pas automatiquement. Sa famille existe toujours, son environnement existe toujours et son talent musical doit toujours se développer par des années de travail.']),
+    chapter('L’enfance',["La différence apparaît d’abord dans le regard des autres. Les voisins, les camarades et les adultes interprètent son apparence à travers leurs propres habitudes sociales. Pour sa famille, cela peut sembler anodin au début, mais les réactions répétées finissent par devenir une partie de son expérience.",'Elle commence malgré tout à chanter, à travailler sa voix et à participer aux activités artistiques qui structurent son enfance. Rien ne permet de conclure qu’elle deviendrait automatiquement plus ou moins talentueuse simplement parce que son apparence est différente.','Le premier effet important est social. Les personnes qui la rencontrent construisent des attentes différentes autour d’elle, et ces attentes influencent certaines opportunités.']),
+    chapter('Destiny’s Child',["Lorsque le projet musical qui deviendra Destiny’s Child prend forme, la différence devient beaucoup plus visible. Une jeune femme blanche au sein d’un groupe dont l’identité est fortement associée à la culture afro-américaine attire des réactions médiatiques différentes.",'Les producteurs doivent décider comment présenter le groupe. Certains pensent que cette particularité peut attirer l’attention ; d’autres craignent qu’elle détourne les discussions de la musique.','Les interviews changent. Les journalistes posent davantage de questions sur son apparence, tandis que les membres du groupe doivent décider comment répondre sans laisser cette question définir leur musique.','Cette situation crée une première bifurcation : une décision marketing prise très tôt peut modifier les personnes rencontrées, les collaborations obtenues et même les chansons choisies plus tard.']),
+    chapter('La carrière solo',["Lorsque Beyoncé se lance en solo, elle dispose toujours d’un immense potentiel artistique, mais le public de cette réalité alternative n’est pas exactement celui de notre monde.",'Certaines chansons rencontrent le même succès, d’autres non. Un producteur qu’elle aurait rencontré dans notre réalité peut ne jamais la rencontrer dans cette trajectoire, tandis qu’une autre collaboration peut devenir décisive.','Les médias continuent de discuter de son identité visuelle, mais elle cherche progressivement à imposer une règle simple : être jugée d’abord comme une artiste.','Cette résistance influence son image publique. Elle choisit certains projets parce qu’ils correspondent à sa vision et refuse d’autres propositions qui auraient fait de son apparence le centre de son identité.']),
+    chapter('La nouvelle icône',["À mesure que sa célébrité augmente, le monde commence à lui attribuer des significations contradictoires. Pour certains, elle représente une exception culturelle ; pour d’autres, elle devient la preuve qu’une industrie peut modifier ses représentations.",'Mais derrière le symbole reste une personne qui doit enregistrer, répéter, voyager, négocier et prendre des décisions. La réalité alternative ne supprime donc pas les difficultés ordinaires d’une carrière internationale.','Au fil des années, les conséquences de la différence initiale deviennent impossibles à isoler. Une rencontre modifiée entraîne une collaboration différente ; une collaboration différente modifie une chanson ; une chanson modifie l’image publique ; cette image influence ensuite les décisions suivantes.','À ce stade, il n’existe plus une simple « Beyoncé blanche » placée dans notre histoire. Il existe une artiste dont la trajectoire entière a progressivement été reconstruite autour d’un premier changement.'])
   ].join('\n\n');
 }
 
-function beyonceScenario() {
+function genericAlternative(prompt,facts=[]) {
+  const evidence=facts.length?facts.map(f=>`${f.title}: ${f.snippet}`).join('\n'):'Aucun repère externe n’a été récupéré.';
   return [
-    chapter('La naissance d’une différence', [
-      'Dans cette réalité alternative, Beyoncé naît dans la même époque et dans la même famille que dans notre histoire, mais elle est blanche.',
-      'Ce changement ne transforme pas magiquement son talent. Sa famille, son environnement musical et son ambition restent les points de départ. Ce qui change, c’est la manière dont les autres la perçoivent et les réactions que cette différence provoque.',
-      'Dès l’enfance, certaines personnes la remarquent pour des raisons qui n’ont rien à voir avec sa voix. Sa famille doit parfois répondre à des questions qui n’existeraient pas dans notre réalité.'
-    ]),
-    chapter('L’adolescence et le groupe', [
-      'Lorsque sa carrière de groupe commence à prendre de l’ampleur, son apparence devient une question supplémentaire pour les responsables du marketing.',
-      'Le groupe conserve son identité musicale, mais les journalistes et le public interprètent différemment la présence d’une jeune femme blanche au milieu de cette formation.',
-      'Certaines personnes y voient un avantage commercial. D’autres craignent que cela brouille le récit culturel du groupe. Ces réactions influencent les interviews, les photographies et certaines décisions professionnelles.'
-    ]),
-    chapter('La carrière solo', [
-      'Lorsqu’elle devient une artiste solo, la question devient encore plus visible. Son apparence fait partie des sujets dont les médias parlent, parfois davantage que sa musique.',
-      'Mais une carrière dépend aussi des chansons, des producteurs, des collaborations, du management, du public et des décisions prises année après année.',
-      'Dans cette réalité, sa trajectoire pourrait donc être très différente sans que l’on puisse prétendre connaître chaque événement avec certitude. Une différence initiale crée des possibilités différentes ; elle ne détermine pas mécaniquement chaque résultat.'
-    ]),
-    chapter('Le nouveau symbole', [
-      'À mesure que sa célébrité augmente, certaines personnes commencent à projeter sur elle des significations qu’elle n’a jamais demandées.',
-      'Elle peut devenir simultanément une artiste, une curiosité médiatique, un symbole pour certains et une cible pour d’autres.',
-      'Le changement le plus important ne vient alors plus seulement de son apparence, mais des millions de réactions humaines que cette apparence déclenche au fil de sa carrière.'
-    ])
+    chapter('Le point de divergence',[`La question est : « ${clean(prompt)} ».`,'La réalité de départ est conservée autant que possible. La condition modifiée est isolée avant de reconstruire les conséquences.','Les faits réels servent de cadre. Les événements inventés à partir du point de divergence sont clairement une fiction et non des faits historiques.']),
+    chapter('Les premières conséquences',['Pendant les premières heures ou les premiers jours, la plupart des personnes ne comprennent pas encore l’importance du changement.','Une première décision devient différente parce que la situation n’est plus exactement celle que les gens connaissaient.','Cette décision crée une conséquence concrète, puis quelqu’un doit réagir à cette conséquence.','Le monde commence alors à prendre une direction légèrement différente.']),
+    chapter('La chaîne des décisions',['Une conséquence entraîne une autre décision. Une nouvelle décision modifie une relation, une institution ou une opportunité.','Certaines conséquences sont positives, d’autres sont dangereuses et certaines ne deviennent visibles que des années plus tard.','La nouvelle réalité n’est donc pas une copie de notre monde : elle devient progressivement un système autonome.']),
+    chapter('Une génération plus tard',['Lorsque de nouvelles générations arrivent, elles grandissent dans un monde qui considère désormais la divergence comme normale.','Les personnes nées après le changement ne comparent pas leur réalité à la nôtre. Elles construisent leurs propres habitudes, leurs propres conflits et leurs propres ambitions.','C’est à ce moment que la petite différence initiale commence à produire des conséquences historiques majeures.']),
+    chapter('Repères utilisés',[evidence])
   ].join('\n\n');
 }
 
-function generalAlternative(prompt, facts) {
-  const factText = facts.length ? '\n\nRepères trouvés pendant la recherche :\n' + facts.map((f) => `• ${f.title} — ${f.snippet}`).join('\n') : '';
-  return [
-    chapter('Le point de divergence', [
-      `La question posée est : « ${clean(prompt)} »`,
-      'La réalité de départ est conservée autant que possible. Une seule condition demandée par l’utilisateur change, puis les conséquences sont reconstruites progressivement.',
-      'Les événements qui suivent sont une fiction alternative. Ils ne prétendent pas être des prédictions certaines.'
-    ]),
-    chapter('Les premières conséquences', [
-      'Au début, la plupart des personnes continuent leur vie normalement. La divergence est encore trop récente pour modifier immédiatement toutes les institutions.',
-      'Puis une première conséquence concrète apparaît. Une personne doit prendre une décision différente de celle qu’elle aurait prise dans notre réalité.',
-      'Cette décision crée une nouvelle branche. D’autres personnes réagissent à leur tour et la trajectoire commence à s’éloigner de notre histoire.'
-    ]),
-    chapter('La nouvelle trajectoire', [
-      'Les années suivantes ne consistent pas à répéter notre histoire avec un détail différent. Les personnes adaptent leurs comportements aux nouvelles circonstances.',
-      'Certaines opportunités apparaissent, d’autres disparaissent. Des rencontres changent. Des conflits deviennent possibles alors qu’ils ne l’étaient pas auparavant.',
-      'À mesure que les décisions s’accumulent, la nouvelle réalité devient autonome.'
-    ]),
-    chapter('Une histoire qui échappe à son origine', [
-      'Plus le temps passe, moins la cause initiale suffit à expliquer ce qui se produit.',
-      'Une décision familiale peut modifier une carrière. Une carrière peut provoquer une rencontre. Une rencontre peut influencer une institution.',
-      'La conséquence finale peut alors devenir beaucoup plus importante que la différence qui avait déclenché toute l’histoire.'
-    ])
-  ].join('\n\n') + factText;
+async function generate(prompt,mode='Long') {
+  const type=classify(prompt);
+  const facts=(type==='REALITE_ALTERNATIVE'||type==='INFORMATION')?await research(prompt):[];
+  if(type==='REALITE_ALTERNATIVE') {
+    const kind=scenario(prompt);
+    const text=kind==='HUMANS_GONE'?humansGone():kind==='BEYONCE'?beyonceScenario(facts):genericAlternative(prompt,facts);
+    return {type,mode,text,research:facts};
+  }
+  if(type==='INFORMATION') return {type,mode,text:`Recherche initiale pour « ${clean(prompt)} » :\n\n${facts.length?facts.map(f=>`• ${f.title} — ${f.snippet}`).join('\n'):"Aucun résultat automatique n’a été trouvé."}\n\nLes résultats sont des repères et ne remplacent pas la vérification auprès de sources spécialisées.`,research:facts};
+  if(type==='RECIT') return {type,mode,text:chapter('Le commencement',[`${clean(prompt)}.`,`La scène commence sans narration automatique sur une « réalité alternative ». Les personnages ont des objectifs différents et la situation évolue à partir de leurs décisions.`,`Un événement inattendu crée un conflit. Quelqu’un choisit d’agir, quelqu’un d’autre refuse, et cette opposition entraîne la scène suivante.`,`L’histoire peut ensuite évoluer selon les actions de l’utilisateur.`]),research:[]};
+  return {type,mode,text:`J’ai compris : ${clean(prompt)}. Donne-moi une situation précise si tu veux une simulation, une histoire ou une explication.`,research:[]};
 }
 
-async function generate(prompt, mode = 'Long') {
-  const type = classify(prompt);
-  const facts = (type === 'REALITE_ALTERNATIVE' || type === 'INFORMATION') ? await research(prompt) : [];
-
-  if (type === 'REALITE_ALTERNATIVE') {
-    const kind = scenario(prompt);
-    let text;
-    if (kind === 'HUMANS_GONE') text = humansGone();
-    else if (kind === 'BEYONCE') text = beyonceScenario();
-    else text = generalAlternative(prompt, facts);
-    return { type, mode, text, research: facts };
-  }
-
-  if (type === 'INFORMATION') {
-    const sourceText = facts.length ? facts.map((f) => `• ${f.title} : ${f.snippet}`).join('\n') : 'Aucune source Wikipédia pertinente n’a été trouvée automatiquement.';
-    return {
-      type,
-      mode,
-      text: `Voici les repères trouvés pour « ${clean(prompt)} ».\n\n${sourceText}\n\nCes résultats servent de points de départ et doivent être vérifiés avec des sources spécialisées pour une information importante.`,
-      research: facts
-    };
-  }
-
-  if (type === 'RECIT') {
-    return {
-      type,
-      mode,
-      text: chapter('Le commencement', [
-        `${clean(prompt)}.`,
-        'La scène commence au moment où quelque chose vient de changer. Les personnages ne possèdent pas tous les mêmes objectifs et chacun croit encore contrôler la situation.',
-        'Puis un événement inattendu oblige l’un d’eux à choisir. Le choix crée un conflit et le conflit entraîne une nouvelle décision.',
-        'À partir de là, les conséquences commencent à s’enchaîner.'
-      ]),
-      research: []
-    };
-  }
-
-  return {
-    type,
-    mode,
-    text: `J’ai compris ta demande : ${clean(prompt)}.\n\nJe vais rester centré sur cette demande au lieu de lui appliquer automatiquement un scénario prédéfini.`,
-    research: []
-  };
-}
-
-app.get('/health', (_req, res) => {
-  res.json({ ok: true, model: MODEL, engine: 'context-aware lightweight narrative engine' });
-});
-
-app.get('/test', async (_req, res) => {
-  try {
-    const result = await generate('Et si les humains disparaissaient demain ?', 'Test');
-    res.json({ ok: true, model: MODEL, ...result });
-  } catch (error) {
-    res.status(500).json({ ok: false, error: 'test_failed', detail: String(error?.message || error) });
-  }
-});
-
-app.post('/generate', async (req, res) => {
-  const prompt = typeof req.body?.prompt === 'string' ? req.body.prompt : '';
-  const mode = typeof req.body?.mode === 'string' ? req.body.mode : 'Long';
-  if (!prompt.trim()) return res.status(400).json({ ok: false, error: 'prompt_required' });
-  try {
-    const result = await generate(prompt, mode);
-    res.json({ ok: true, model: MODEL, ...result });
-  } catch (error) {
-    res.status(500).json({ ok: false, error: 'generation_failed', detail: String(error?.message || error) });
-  }
-});
-
-const port = Number(process.env.PORT || 10000);
-app.listen(port, '0.0.0.0', () => console.log(`Et Si? AI server listening on ${port}`));
+app.get('/health',(_req,res)=>res.json({ok:true,model:MODEL,engine:'context-aware lightweight narrative engine'}));
+app.get('/test',async(_req,res)=>{try{const r=await generate('Et si les humains disparaissaient demain ?','Test');res.json({ok:true,model:MODEL,...r});}catch(e){res.status(500).json({ok:false,error:'test_failed',detail:String(e?.message||e)});}});
+app.post('/generate',async(req,res)=>{const prompt=typeof req.body?.prompt==='string'?req.body.prompt:'';const mode=typeof req.body?.mode==='string'?req.body.mode:'Long';if(!prompt.trim())return res.status(400).json({ok:false,error:'prompt_required'});try{const r=await generate(prompt,mode);res.json({ok:true,model:MODEL,...r});}catch(e){res.status(500).json({ok:false,error:'generation_failed',detail:String(e?.message||e)});}});
+const port=Number(process.env.PORT||10000);app.listen(port,'0.0.0.0',()=>console.log(`Et Si? AI server listening on ${port}`));
