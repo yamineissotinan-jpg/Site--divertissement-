@@ -132,7 +132,6 @@ app.post('/generate', (req, res) => {
     if (!prompt) return res.status(400).json({ ok: false, error: 'prompt_required' });
 
     // Critical fix: only the capped prompt/context reach the generator.
-    // No giant browser history can trigger "prompt too long" anymore.
     const result = generate(prompt, mode, context);
     const output = cap(result.text, MAX_OUTPUT);
     res.json({ ok: true, model: MODEL, engine: 'context-aware lightweight narrative engine', type: result.type, mode, text: output, research: [] });
@@ -142,9 +141,10 @@ app.post('/generate', (req, res) => {
   }
 });
 
-app.get('*', (req, res) => {
-  if (req.path.startsWith('/health') || req.path.startsWith('/test') || req.path.startsWith('/generate')) return res.status(404).json({ ok: false, error: 'not_found' });
-  res.sendFile(path.join(ROOT, 'index.html'));
+// Express 5 does not need a wildcard route here. Static middleware serves the
+// real frontend at / and all known API routes are handled above.
+app.use((_req, res) => {
+  res.status(404).json({ ok: false, error: 'not_found' });
 });
 
 app.listen(PORT, '0.0.0.0', () => {
