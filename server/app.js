@@ -5,7 +5,9 @@ import path from 'node:path';
 const app = express();
 const MODEL = 'lightweight-narrative-engine-v5';
 const PORT = Number(process.env.PORT || 10000);
-const MAX_PROMPT = 2500;
+// The frontend sends generation instructions, context and chapter memory together.
+// Keep a generous limit so normal Long/Epique/Film generations do not get rejected.
+const MAX_PROMPT = 30000;
 const RESEARCH_TIMEOUT_MS = 3500;
 const FRONTEND = path.resolve(process.cwd(), '../index.html');
 
