@@ -133,9 +133,7 @@ function generate(prompt, mode, context, memory) {
   return { type, text: genericAlternative(prompt, context, memory) };
 }
 
-// Inject a tiny browser-side bridge without changing the existing frontend file.
-// It stores only the compact memory returned by the server and clears it on "Nouvelle".
-const MEMORY_BRIDGE = `<script>(function(){const K='etsi_narrative_memory_v1';const oldFetch=window.fetch.bind(window);window.fetch=async function(input,init){let isGen=false;try{const u=typeof input==='string'?input:input.url||'';isGen=/\\/generate$/.test(u);if(isGen&&init&&init.body){const b=JSON.parse(init.body);const m=localStorage.getItem(K);if(m)b.memory=m;init={...init,body:JSON.stringify(b)}}}catch(e){}const r=await oldFetch(input,init);if(isGen){try{const c=r.clone();const j=await c.json();if(j&&j.memory)localStorage.setItem(K,JSON.stringify(j.memory))}catch(e){}}return r};document.addEventListener('click',e=>{if(e.target&&e.target.id==='new')localStorage.removeItem(K)});})();</script>`;
+const MEMORY_BRIDGE = `<script>(function(){const K='etsi_narrative_memory_v1';const oldFetch=window.fetch.bind(window);window.fetch=async function(input,init){let isGen=false;try{const u=typeof input==='string'?input:input.url||'';isGen=u.endsWith('/generate');if(isGen&&init&&init.body){const b=JSON.parse(init.body);const m=localStorage.getItem(K);if(m)b.memory=m;init={...init,body:JSON.stringify(b)}}}catch(e){}const r=await oldFetch(input,init);if(isGen){try{const c=r.clone();const j=await c.json();if(j&&j.memory)localStorage.setItem(K,JSON.stringify(j.memory))}catch(e){}}return r};document.addEventListener('click',e=>{if(e.target&&e.target.id==='new')localStorage.removeItem(K)});})();</script>`;
 
 app.get('/health', (_req, res) => res.json({ ok: true, model: MODEL, engine: 'context-aware lightweight narrative engine', status: 'healthy' }));
 app.get('/test', (_req, res) => { const result = generate('Et si tous les humains disparaissaient demain ?', 'Test', '', null); res.json({ ok: true, model: MODEL, ...result, mode: 'Test', research: [], memory: compactMemory('Et si tous les humains disparaissaient demain ?', result.type, null, result.text) }); });
