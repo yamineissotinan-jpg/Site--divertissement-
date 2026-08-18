@@ -58,6 +58,7 @@ function parseMemory(value) {
     const m = typeof value === 'string' ? JSON.parse(value) : value;
     if (!m || typeof m !== 'object') return null;
     return {
+      version: 1,
       scenario: cap(m.scenario, 600),
       divergence: cap(m.divergence, 400),
       time: cap(m.time, 180),
@@ -67,28 +68,6 @@ function parseMemory(value) {
       current: cap(m.current, 500)
     };
   } catch { return null; }
-}
-
-function compactMemory(prompt, type, previous, output) {
-  const old = parseMemory(previous);
-  const p = clean(prompt);
-  const follow = /\b(dix|vingt|trente|cent|quelques|plus tard|annee|ans|siecle|ensuite|apres|puis|maintenant)\b/i.test(p);
-  const scenarioText = old?.scenario || p;
-  const divergence = old?.divergence || (type === 'REALITE_ALTERNATIVE' ? p : '');
-  const time = follow ? (old?.time || 'après la génération précédente') : (old?.time || 'début du scénario');
-  const events = [...(old?.events || [])];
-  if (old?.current) events.push(old.current);
-  const current = cap(output.replace(/CHAPITRE\s*[—-]\s*/gi, '').replace(/\s+/g, ' ').trim(), 500);
-  return {
-    version: 1,
-    scenario: cap(scenarioText, 600),
-    divergence: cap(divergence, 400),
-    time: cap(time, 180),
-    places: old?.places || '',
-    characters: old?.characters || '',
-    events: events.slice(-5),
-    current
-  };
 }
 
 function memoryText(memory) {
@@ -103,6 +82,43 @@ function memoryText(memory) {
     m.events.length && `EVENEMENTS: ${m.events.join(' | ')}`,
     `SITUATION ACTUELLE: ${m.current}`
   ].filter(Boolean).join('\n');
+}
+
+function fitMemory(memory) {
+  let m = parseMemory(memory);
+  if (!m) return null;
+  const size = () => JSON.stringify(m).length;
+  while (size() > MAX_MEMORY && m.events.length > 1) m.events.shift();
+  if (size() > MAX_MEMORY) m.current = cap(m.current, 300);
+  if (size() > MAX_MEMORY) m.characters = cap(m.characters, 180);
+  if (size() > MAX_MEMORY) m.places = cap(m.places, 140);
+  if (size() > MAX_MEMORY) m.divergence = cap(m.divergence, 260);
+  if (size() > MAX_MEMORY) m.scenario = cap(m.scenario, 420);
+  if (size() > MAX_MEMORY) m.current = cap(m.current, 160);
+  if (size() > MAX_MEMORY) m.events = m.events.slice(-2).map(x => cap(x, 100));
+  return m;
+}
+
+function compactMemory(prompt, type, previous, output) {
+  const old = parseMemory(previous);
+  const p = clean(prompt);
+  const follow = /\b(dix|vingt|trente|cent|quelques|plus tard|annee|ans|siecle|ensuite|apres|puis|maintenant)\b/i.test(p);
+  const scenarioText = old?.scenario || p;
+  const divergence = old?.divergence || (type === 'REALITE_ALTERNATIVE' ? p : '');
+  const time = follow ? (old?.time || 'après la génération précédente') : (old?.time || 'début du scénario');
+  const events = [...(old?.events || [])];
+  if (old?.current) events.push(old.current);
+  const current = cap(output.replace(/CHAPITRE\s*[—-]\s*/gi, '').replace(/\s+/g, ' ').trim(), 500);
+  return fitMemory({
+    version: 1,
+    scenario: cap(scenarioText, 600),
+    divergence: cap(divergence, 400),
+    time: cap(time, 180),
+    places: old?.places || '',
+    characters: old?.characters || '',
+    events: events.slice(-5),
+    current
+  });
 }
 
 function genericAlternative(prompt, context, memory) {
@@ -133,10 +149,34 @@ function generate(prompt, mode, context, memory) {
   return { type, text: genericAlternative(prompt, context, memory) };
 }
 
+function runMemorySelfTest() {
+  const firstPrompt = 'Et si tous les humains disparaissaient demain ?';
+  const first = generate(firstPrompt, 'Long', '', null);
+  const memory1 = compactMemory(firstPrompt, first.type, null, first.text);
+  const secondPrompt = 'Et dix ans plus tard ?';
+  const second = generate(secondPrompt, 'Long', '', memory1);
+  const memory2 = compactMemory(secondPrompt, second.type, memory1, second.text);
+  const thirdPrompt = 'Et vingt ans plus tard ?';
+  const third = generate(thirdPrompt, 'Long', '', memory2);
+  const memory3 = compactMemory(thirdPrompt, third.type, memory2, third.text);
+  const fresh = generate('Et si les océans montaient de 20 mètres ?', 'Long', '', null);
+  const checks = {
+    memoryCreated: !!memory1,
+    memory1Bounded: !!memory1 && JSON.stringify(memory1).length <= MAX_MEMORY,
+    memory2Bounded: !!memory2 && JSON.stringify(memory2).length <= MAX_MEMORY,
+    memory3Bounded: !!memory3 && JSON.stringify(memory3).length <= MAX_MEMORY,
+    followupUsesMemory: second.text.includes('continuation du même scénario'),
+    thirdUsesMemory: third.text.includes('continuation du même scénario'),
+    freshStartsWithoutMemory: !fresh.text.includes('continuation du même scénario')
+  };
+  return { ok: Object.values(checks).every(Boolean), checks, sizes: [memory1, memory2, memory3].map(m => JSON.stringify(m || {}).length) };
+}
+
 const MEMORY_BRIDGE = `<script>(function(){const K='etsi_narrative_memory_v1';const oldFetch=window.fetch.bind(window);window.fetch=async function(input,init){let isGen=false;try{const u=typeof input==='string'?input:input.url||'';isGen=u.endsWith('/generate');if(isGen&&init&&init.body){const b=JSON.parse(init.body);const m=localStorage.getItem(K);if(m)b.memory=m;init={...init,body:JSON.stringify(b)}}}catch(e){}const r=await oldFetch(input,init);if(isGen){try{const c=r.clone();const j=await c.json();if(j&&j.memory)localStorage.setItem(K,JSON.stringify(j.memory))}catch(e){}}return r};document.addEventListener('click',e=>{if(e.target&&e.target.id==='new')localStorage.removeItem(K)});})();</script>`;
 
 app.get('/health', (_req, res) => res.json({ ok: true, model: MODEL, engine: 'context-aware lightweight narrative engine', status: 'healthy' }));
 app.get('/test', (_req, res) => { const result = generate('Et si tous les humains disparaissaient demain ?', 'Test', '', null); res.json({ ok: true, model: MODEL, ...result, mode: 'Test', research: [], memory: compactMemory('Et si tous les humains disparaissaient demain ?', result.type, null, result.text) }); });
+app.get('/test/memory', (_req, res) => res.json(runMemorySelfTest()));
 
 app.get('/', async (_req, res) => {
   try {
