@@ -1,0 +1,50 @@
+name: Narrative memory test
+
+on:
+  push:
+    branches:
+      - feat/narrative-memory
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  memory-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        working-directory: server
+        run: npm install --no-audit --no-fund
+      - name: Start server
+        working-directory: server
+        env:
+          PORT: 10000
+        run: |
+          node app.js > /tmp/etsi-server.log 2>&1 &
+          echo $! > /tmp/etsi-server.pid
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:10000/health >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/etsi-server.log
+          exit 1
+      - name: Run narrative memory self-test
+        run: |
+          response=$(curl -fsS http://127.0.0.1:10000/test/memory)
+          echo "$response"
+          node -e 'const r=JSON.parse(process.argv[1]); if(!r.ok){console.error("Self-test failed", r); process.exit(1)}' "$response"
+      - name: Run hybrid provider smoke test
+        run: |
+          response=$(curl -fsS http://127.0.0.1:10000/health)
+          echo "$response"
+          node -e 'const r=JSON.parse(process.argv[1]); if(!r.ok || !r.model){process.exit(1)}' "$response"
+      - name: Stop server
+        if: always()
+        run: |
+          if [ -f /tmp/etsi-server.pid ]; then kill "$(cat /tmp/etsi-server.pid)" || true; fi

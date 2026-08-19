@@ -1,1 +1,16 @@
-{"name":"etsi-ai-server","private":true,"type":"module","engines":{"node":">=18"},"scripts":{"start":"node app.js"},"dependencies":{"cors":"^2.8.5","express":"^5.1.0"}}
+{
+  "name": "etsi-ai-server",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "download-model": "node download-local-model.js",
+    "prestart": "npm run download-model",
+    "start": "node app.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "node-llama-cpp": "^3.19.1"
+  }
+}

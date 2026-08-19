@@ -1,35 +1,35 @@
 import express from 'express';
 import cors from 'cors';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { aiConfigured, aiModel, generateWithAI } from './ai-provider.js';
 
 const app = express();
 const PORT = Number(process.env.PORT || 10000);
-const MODEL = 'lightweight-narrative-engine-v6';
+const MODEL = aiConfigured ? aiModel : 'lightweight-narrative-engine-v7-local-fallback';
+const ENGINE = aiConfigured ? 'hybrid-ai-memory-orchestrator' : 'hybrid-orchestrator-local-fallback';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, '..');
-
-// The browser can send a long history. Never pass the whole history to the
-// narrative engine: this prevents the previous "prompt too long" failures.
 const MAX_INPUT = 12000;
 const MAX_CONTEXT = 5000;
 const MAX_OUTPUT = 18000;
+const MAX_MEMORY = 2200;
 
 app.disable('x-powered-by');
 app.use(cors());
 app.use(express.json({ limit: '512kb' }));
-app.use(express.static(ROOT, { index: 'index.html' }));
 
-const text = (value = '') => String(value ?? '').trim();
-const clean = (value = '') => text(value).replace(/[.!?]+$/g, '');
-const normalize = (value = '') => clean(value).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-const cap = (value, size) => text(value).slice(0, size);
+const text = (v = '') => String(v ?? '').trim();
+const clean = (v = '') => text(v).replace(/[.!?]+$/g, '');
+const normalize = (v = '') => clean(v).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+const cap = (v, n) => text(v).slice(0, n);
 
 function classify(prompt) {
   const s = normalize(prompt);
   if (/\bet si\b|imagine|supposons|autre realite|que se passerait/.test(s)) return 'REALITE_ALTERNATIVE';
-  if (/raconte|histoire|roman|fiction|conte/.test(s)) return 'RECIT';
+  if (/raconte|histoire|roman|conte/.test(s)) return 'RECIT';
   if (/^(pourquoi|comment|qu est ce|quelle|quel|qui|combien|quand|ou)\b/.test(s)) return 'INFORMATION';
   return 'CONVERSATION';
 }
@@ -46,107 +46,166 @@ function chapter(title, paragraphs) {
 
 function humansGone() {
   return [
-    chapter('Le dernier matin', [
-      'À 7 h 42, les villes fonctionnent encore comme si rien n’avait changé. Les feux de circulation changent de couleur, les ascenseurs terminent leurs trajets et des téléphones continuent de vibrer dans des appartements désormais silencieux.',
-      'Puis la réalité apparaît : tous les humains ont disparu, partout sur Terre, au même instant. Il n’y a pas de survivants cachés dans une capitale, un bunker ou un village isolé.',
-      'Les premières minutes restent étrangement ordinaires. Les bâtiments sont debout, les ordinateurs exécutent les tâches déjà lancées et certaines machines continuent leur cycle automatique.',
-      'À Cotonou comme ailleurs, les appareils domestiques fonctionnent encore. Mais chaque système qui dépendait d’un humain vient de commencer un compte à rebours invisible.'
-    ]),
-    chapter('Les premières heures', [
-      'Les avions deviennent l’un des premiers problèmes visibles. Leur automatisation peut maintenir un appareil pendant un certain temps, mais elle ne remplace pas indéfiniment un équipage.',
-      'Sur les routes, certaines voitures s’arrêtent, d’autres provoquent des accidents. Les feux continuent de fonctionner jusqu’à ce qu’une panne ou l’absence de maintenance les immobilise.',
-      'Les réseaux électriques connaissent des trajectoires différentes. Les protections automatiques isolent certaines pannes, mais aucune machine ne peut remplacer partout les équipes qui surveillaient et réparaient les installations.'
-    ]),
-    chapter('La première semaine', [
-      'L’eau potable devient progressivement un problème majeur. Les stations de pompage peuvent continuer quelque temps, mais elles dépendent de l’électricité, de composants mécaniques et d’une maintenance régulière.',
-      'Les aliments réfrigérés commencent à se dégrader lorsque les réseaux électriques deviennent instables. Les magasins restent pleins, mais leur contenu perd rapidement sa valeur.',
-      'Les animaux domestiques connaissent des destins différents. Certains trouvent une sortie et apprennent à chercher de l’eau et de la nourriture ; d’autres restent enfermés et ne survivent pas.'
-    ]),
-    chapter('Les premières années', [
-      'Les villes ne deviennent pas immédiatement des forêts. Les routes, les bâtiments et les infrastructures restent visibles, mais l’entretien s’est arrêté partout.',
-      'L’eau pénètre les fissures, les plantes colonisent les espaces abandonnés et les matériaux se dégradent lentement. Les égouts et les systèmes de traitement cessent progressivement de fonctionner.',
-      'Les satellites restent parfois actifs pendant un certain temps, mais les équipements qui nécessitent une intervention au sol finissent eux aussi par perdre leurs capacités.'
-    ]),
-    chapter('Un siècle plus tard', [
-      'Cent ans passent. Les métaux ont rouillé, de nombreuses vitres ont disparu et les racines ont pénétré des structures qui semblaient autrefois permanentes.',
-      'Certaines constructions massives restent reconnaissables tandis que des objets ordinaires ont disparu. Une ancienne autoroute peut encore être visible sous la végétation sans être praticable.',
-      'La Terre n’a pas effacé l’humanité en une journée. Elle a lentement transformé une civilisation abandonnée en paysage.'
-    ])
+    chapter('Le dernier matin', ['À 7 h 42, les villes fonctionnent encore comme si rien n’avait changé. Les systèmes automatiques poursuivent leurs tâches et les bâtiments restent debout.','Puis la réalité apparaît : tous les humains ont disparu, partout sur Terre, au même instant. Il n’y a pas de survivants cachés.']),
+    chapter('Les premières heures', ['Les avions, les routes et les réseaux électriques commencent à diverger selon leur degré d’automatisation, leur énergie disponible et les conditions locales.','Les protections automatiques peuvent isoler certaines pannes, mais elles ne remplacent pas les équipes humaines chargées de surveiller et réparer les infrastructures.']),
+    chapter('La première semaine', ['Les stations de pompage et les réseaux d’eau dépendent progressivement de systèmes qui nécessitent énergie, pièces et maintenance.','Les aliments réfrigérés se dégradent lorsque l’électricité devient instable. Les animaux domestiques connaissent des destins différents selon leur capacité à trouver eau, nourriture et abri.']),
+    chapter('Les premières années', ['Les villes restent reconnaissables mais l’entretien cesse. L’eau, les plantes, le gel et la corrosion accélèrent la dégradation des bâtiments et des routes.','Les systèmes spatiaux continuent parfois pendant un temps, puis perdent progressivement leurs capacités faute d’intervention terrestre.']),
+    chapter('Un siècle plus tard', ['Les métaux ont rouillé, les vitres ont disparu de nombreux bâtiments et la végétation a repris des espaces artificiels.','Certaines infrastructures massives restent reconnaissables, tandis que la plupart des objets ordinaires deviennent des traces d’une civilisation disparue.'])
   ].join('\n\n');
 }
 
-function genericAlternative(prompt, context) {
-  const p = clean(prompt) || 'une différence apparaît dans notre réalité';
-  const ctx = context ? `Le contexte utile est conservé sans recopier tout l’historique : ${cap(context, 900)}` : 'Aucun historique supplémentaire n’est nécessaire pour commencer.';
-  return [
-    chapter('Le point de divergence', [
-      `La question de départ est : « ${p} ».`,
-      'Pour construire cette réalité alternative, un seul changement est isolé au départ. Le reste du monde conserve autant que possible ses conditions réelles.',
-      ctx
-    ]),
-    chapter('Les premières conséquences', [
-      'Au début, la différence semble limitée. La majorité des personnes poursuivent leur quotidien sans comprendre qu’une nouvelle trajectoire vient de commencer.',
-      'Une décision, une rencontre ou un événement devient légèrement différent. Cette première différence produit une conséquence concrète.',
-      'Une seconde décision doit alors être prise, et le monde commence à s’éloigner progressivement de notre histoire.'
-    ]),
-    chapter('La chaîne des décisions', [
-      'Chaque conséquence modifie les possibilités suivantes. Une opportunité apparaît alors qu’elle n’existait pas auparavant, tandis qu’une autre disparaît.',
-      'Les individus réagissent à ces changements selon leurs intérêts, leurs connaissances et leurs contraintes. Les institutions s’adaptent à leur tour.',
-      'Après plusieurs années, il devient impossible de revenir exactement au monde initial : la nouvelle réalité possède désormais sa propre histoire.'
-    ]),
-    chapter('Une génération plus tard', [
-      'Les personnes nées après la divergence considèrent cette nouvelle réalité comme normale. Elles ne cherchent plus à reproduire notre monde ; elles construisent le leur.',
-      'Les conséquences deviennent alors plus profondes : culture, économie, relations, technologies et décisions politiques suivent des chemins différents.',
-      'La petite différence du départ est devenue un changement historique majeur.'
-    ])
-  ].join('\n\n');
-}
-
-function information(prompt) {
-  return `QUESTION — ${clean(prompt)}\n\nLe moteur local peut répondre aux demandes générales et aux simulations. Pour une réponse factuelle nécessitant des données récentes, une recherche externe doit être activée.\n\nPour une simulation « Et si ? », formule la question comme une réalité alternative afin que le moteur construise les conséquences étape par étape.`;
-}
-
-function generate(prompt, mode, context) {
-  const type = classify(prompt);
-  if (scenario(prompt) === 'HUMANS_GONE') return { type: 'REALITE_ALTERNATIVE', text: humansGone() };
-  if (type === 'INFORMATION') return { type, text: information(prompt) };
-  return { type, text: genericAlternative(prompt, context) };
-}
-
-app.get('/health', (_req, res) => {
-  res.json({ ok: true, model: MODEL, engine: 'context-aware lightweight narrative engine', status: 'healthy' });
-});
-
-app.get('/test', (_req, res) => {
-  const result = generate('Et si tous les humains disparaissaient demain ?', 'Test', '');
-  res.json({ ok: true, model: MODEL, ...result, mode: 'Test', research: [] });
-});
-
-app.post('/generate', (req, res) => {
+function parseMemory(value) {
+  if (!value) return null;
   try {
-    const body = req.body && typeof req.body === 'object' ? req.body : {};
-    const prompt = cap(body.prompt ?? body.question ?? body.message ?? body.input ?? '', MAX_INPUT);
-    const mode = cap(body.mode ?? body.length ?? 'Long', 80);
-    const context = cap(body.context ?? body.history ?? body.memory ?? body.previous ?? '', MAX_CONTEXT);
+    const m = typeof value === 'string' ? JSON.parse(value) : value;
+    if (!m || typeof m !== 'object') return null;
+    return {
+      version: 2,
+      scenario: cap(m.scenario, 600),
+      divergence: cap(m.divergence, 400),
+      time: cap(m.time, 180),
+      places: cap(m.places, 260),
+      characters: cap(m.characters, 320),
+      events: Array.isArray(m.events) ? m.events.slice(-5).map(x => cap(x, 180)) : [],
+      current: cap(m.current, 500)
+    };
+  } catch { return null; }
+}
 
-    if (!prompt) return res.status(400).json({ ok: false, error: 'prompt_required' });
+function memoryText(memory) {
+  const m = parseMemory(memory);
+  if (!m) return '';
+  return [
+    `SCENARIO: ${m.scenario}`,
+    `DIVERGENCE: ${m.divergence}`,
+    `TEMPS: ${m.time}`,
+    m.places && `LIEUX: ${m.places}`,
+    m.characters && `PERSONNAGES: ${m.characters}`,
+    m.events.length && `EVENEMENTS: ${m.events.join(' | ')}`,
+    `SITUATION ACTUELLE: ${m.current}`
+  ].filter(Boolean).join('\n');
+}
 
-    // Critical fix: only the capped prompt/context reach the generator.
-    const result = generate(prompt, mode, context);
-    const output = cap(result.text, MAX_OUTPUT);
-    res.json({ ok: true, model: MODEL, engine: 'context-aware lightweight narrative engine', type: result.type, mode, text: output, research: [] });
+function fitMemory(memory) {
+  let m = parseMemory(memory);
+  if (!m) return null;
+  const size = () => JSON.stringify(m).length;
+  while (size() > MAX_MEMORY && m.events.length > 1) m.events.shift();
+  if (size() > MAX_MEMORY) m.current = cap(m.current, 300);
+  if (size() > MAX_MEMORY) m.characters = cap(m.characters, 180);
+  if (size() > MAX_MEMORY) m.places = cap(m.places, 140);
+  if (size() > MAX_MEMORY) m.divergence = cap(m.divergence, 260);
+  if (size() > MAX_MEMORY) m.scenario = cap(m.scenario, 420);
+  if (size() > MAX_MEMORY) m.current = cap(m.current, 160);
+  if (size() > MAX_MEMORY) m.events = m.events.slice(-2).map(x => cap(x, 100));
+  return m;
+}
+
+function compactMemory(prompt, type, previous, output) {
+  const old = parseMemory(previous);
+  const p = clean(prompt);
+  const follow = /\b(dix|vingt|trente|cent|quelques|plus tard|annee|ans|siecle|ensuite|apres|puis|maintenant)\b/i.test(p);
+  const events = [...(old?.events || [])];
+  if (old?.current) events.push(old.current);
+  return fitMemory({
+    version: 2,
+    scenario: cap(old?.scenario || p, 600),
+    divergence: cap(old?.divergence || (type === 'REALITE_ALTERNATIVE' ? p : ''), 400),
+    time: cap(follow ? (old?.time || 'suite du scénario') : (old?.time || 'début du scénario'), 180),
+    places: cap(old?.places || '', 260),
+    characters: cap(old?.characters || '', 320),
+    events: events.slice(-5),
+    current: cap(output.replace(/CHAPITRE\s*[—-]\s*/gi, '').replace(/\s+/g, ' ').trim(), 500)
+  });
+}
+
+function isFollowUp(prompt, memory) {
+  if (!memory) return false;
+  return /\b(plus tard|ensuite|apres|après|puis|maintenant|dix ans|vingt ans|trente ans|cent ans|annee suivante|année suivante)\b/i.test(prompt);
+}
+
+function localGenerate(prompt, context, memory) {
+  const type = classify(prompt);
+  if (scenario(prompt) === 'HUMANS_GONE' && !memory) return { type: 'REALITE_ALTERNATIVE', text: humansGone() };
+  if (type === 'INFORMATION' && !memory) {
+    return { type, text: `QUESTION — ${clean(prompt)}\n\nLe moteur local n’a pas accès aux informations récentes. Avec le fournisseur IA activé, le système peut produire une réponse générale en utilisant la mémoire compacte sans envoyer tout l’historique.` };
+  }
+  const follow = isFollowUp(prompt, memory);
+  const m = memoryText(memory);
+  const lead = follow
+    ? `Cette question continue le même scénario. L’état précédent est conservé et la nouvelle réponse part de cette situation, sans recommencer le monde depuis zéro.`
+    : `La question de départ est : « ${clean(prompt)} ».`;
+  return {
+    type,
+    text: [
+      chapter('Point de départ', [lead, m ? `État compact mémorisé : ${m}` : 'Aucun état précédent.']),
+      chapter(follow ? 'Évolution' : 'Premières conséquences', ['Les conséquences apparaissent progressivement. Les individus, les institutions et les systèmes réagissent au changement initial.','Chaque conséquence modifie les possibilités de la suite.']),
+      chapter('Propagation', ['Les décisions prises dans cette nouvelle réalité produisent à leur tour des effets secondaires.','Avec le temps, la divergence devient une trajectoire autonome.']),
+      chapter('Une génération plus tard', ['Les nouvelles générations considèrent progressivement cette réalité comme normale.','Le changement initial finit par influencer durablement les sociétés, les comportements et les infrastructures.'])
+    ].join('\n\n')
+  };
+}
+
+async function generateHybrid(prompt, mode, context, memory) {
+  const local = localGenerate(prompt, context, memory);
+  try {
+    const aiText = await generateWithAI({ prompt, memoryText: memoryText(memory), context: cap(context, 1200), mode });
+    if (aiText) return { type: local.type, text: aiText, provider: 'model' };
   } catch (error) {
-    console.error('Generation error:', error);
-    res.status(500).json({ ok: false, error: 'generation_failed', detail: text(error?.message || error).slice(0, 500) });
+    console.error('AI provider fallback:', error?.message || error);
+  }
+  return { ...local, provider: 'local-fallback' };
+}
+
+function runMemorySelfTest() {
+  const p1 = 'Et si tous les humains disparaissaient demain ?';
+  const r1 = localGenerate(p1, '', null);
+  const m1 = compactMemory(p1, r1.type, null, r1.text);
+  const p2 = 'Et dix ans plus tard ?';
+  const r2 = localGenerate(p2, '', m1);
+  const m2 = compactMemory(p2, r2.type, m1, r2.text);
+  const p3 = 'Et vingt ans plus tard ?';
+  const r3 = localGenerate(p3, '', m2);
+  const m3 = compactMemory(p3, r3.type, m2, r3.text);
+  const fresh = localGenerate('Et si les océans montaient de 20 mètres ?', '', null);
+  const checks = {
+    memoryCreated: !!m1,
+    memoryBounded: [m1, m2, m3].every(m => m && JSON.stringify(m).length <= MAX_MEMORY),
+    followup1: isFollowUp(p2, m1),
+    followup2: isFollowUp(p3, m2),
+    freshScenario: !isFollowUp('Et si les océans montaient de 20 mètres ?', null),
+    outputsNonEmpty: [r1, r2, r3, fresh].every(r => text(r.text).length > 100)
+  };
+  return { ok: Object.values(checks).every(Boolean), checks, sizes: [m1, m2, m3].map(m => JSON.stringify(m || {}).length) };
+}
+
+const MEMORY_BRIDGE = `<script>(function(){const K='etsi_narrative_memory_v2';const oldFetch=window.fetch.bind(window);window.fetch=async function(input,init){let gen=false;try{const u=typeof input==='string'?input:input.url||'';gen=u.endsWith('/generate');if(gen&&init&&init.body){const b=JSON.parse(init.body);const m=localStorage.getItem(K);if(m)b.memory=m;init={...init,body:JSON.stringify(b)}}}catch(e){}const r=await oldFetch(input,init);if(gen){try{const j=await r.clone().json();if(j?.memory)localStorage.setItem(K,JSON.stringify(j.memory))}catch(e){}}return r};document.addEventListener('click',e=>{if(e.target?.id==='new')localStorage.removeItem(K)});})();</script>`;
+
+app.get('/health', (_req,res) => res.json({ ok:true, model:MODEL, engine:ENGINE, status:'healthy', aiConfigured }));
+app.get('/test', async (_req,res) => { const r=await generateHybrid('Et si tous les humains disparaissaient demain ?','Test','',null); res.json({ok:true,model:MODEL,engine:ENGINE,type:r.type,mode:'Test',text:cap(r.text,MAX_OUTPUT),research:[],memory:compactMemory('Et si tous les humains disparaissaient demain ?',r.type,null,r.text),provider:r.provider}); });
+app.get('/test/memory', (_req,res) => res.json(runMemorySelfTest()));
+app.get('/test/ai', async (_req,res) => { if(!aiConfigured)return res.json({ok:true,configured:false,message:'AI_API_KEY and AI_MODEL are not configured; local fallback is active.'}); try { const r=await generateWithAI({prompt:'Réponds en une phrase: quel est le principe d’une réalité alternative ?',memoryText:'',context:'',mode:'Short'}); res.json({ok:Boolean(r),configured:true,model:aiModel,preview:cap(r||'',500)}); } catch(e) { res.status(502).json({ok:false,configured:true,error:'ai_provider_failed',detail:cap(e?.message||e,500)}); } });
+
+app.get('/', async (_req,res) => { try { const html=await fs.readFile(path.join(ROOT,'index.html'),'utf8'); res.type('html').send(html.replace('</body>',`${MEMORY_BRIDGE}</body>`)); } catch { res.status(500).send('Frontend unavailable'); } });
+app.use(express.static(ROOT,{index:false}));
+
+app.post('/generate', async (req,res) => {
+  try {
+    const body=req.body&&typeof req.body==='object'?req.body:{};
+    const prompt=cap(body.prompt??body.question??body.message??body.input??'',MAX_INPUT);
+    const mode=cap(body.mode??body.length??'Long',80);
+    const context=cap(body.context??body.history??'',MAX_CONTEXT);
+    const memory=parseMemory(body.memory);
+    if(!prompt)return res.status(400).json({ok:false,error:'prompt_required'});
+    const r=await generateHybrid(prompt,mode,context,memory);
+    const output=cap(r.text,MAX_OUTPUT);
+    const nextMemory=compactMemory(prompt,r.type,memory,output);
+    res.json({ok:true,model:MODEL,engine:ENGINE,type:r.type,mode,text:output,research:[],memory:nextMemory,provider:r.provider});
+  } catch(error) {
+    console.error('Generation error:',error);
+    res.status(500).json({ok:false,error:'generation_failed',detail:cap(error?.message||error,500)});
   }
 });
 
-// Express 5 does not need a wildcard route here. Static middleware serves the
-// real frontend at / and all known API routes are handled above.
-app.use((_req, res) => {
-  res.status(404).json({ ok: false, error: 'not_found' });
-});
-
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Et Si? AI server listening on ${PORT}`);
-});
+app.use((_req,res)=>res.status(404).json({ok:false,error:'not_found'}));
+app.listen(PORT,'0.0.0.0',()=>console.log(`Et Si? AI server listening on ${PORT}`));
