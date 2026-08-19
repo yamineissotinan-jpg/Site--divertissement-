@@ -14,14 +14,14 @@ services:
       sizeGB: 25
     envVars:
       - key: LOCAL_MODEL_PATH
-        value: /var/data/etsi-ai/mixtral-8x7b-instruct-v0.1.Q2_K.gguf
+        value: /var/data/etsi-ai/mixtral-8x7b-instruct-v0.1.Q3_K_M.gguf
       - key: LOCAL_MODEL_URL
-        value: https://huggingface.co/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF/resolve/main/mixtral-8x7b-instruct-v0.1.Q2_K.gguf?download=true
+        value: https://huggingface.co/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF/resolve/main/mixtral-8x7b-instruct-v0.1.Q3_K_M.gguf?download=true
       - key: LOCAL_MODEL_NAME
-        value: Mixtral-8x7B-Instruct-v0.1-Q2_K-GGUF-47B
+        value: Mixtral-8x7B-Instruct-v0.1-Q3_K_M-GGUF-47B
       - key: LOCAL_CONTEXT_SIZE
         value: "2048"
       - key: LOCAL_THREADS
         value: "8"
       - key: MODEL_MIN_BYTES
-        value: "15000000000"
+        value: "19000000000"
