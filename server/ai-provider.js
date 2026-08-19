@@ -1,0 +1,17 @@
+import { generateLocal, localModelName, localModelStatus } from './local-llm.js';
+const API_KEY = process.env.AI_API_KEY || '';
+const API_URL = process.env.AI_API_URL || 'https://api.openai.com/v1/chat/completions';
+const MODEL = process.env.AI_MODEL || '';
+const TIMEOUT_MS = Number(process.env.AI_TIMEOUT_MS || 45000);
+const MAX_AI_PROMPT = 6500;
+const MAX_AI_MEMORY = 1800;
+const MAX_AI_CONTEXT = 1000;
+export const remoteAiConfigured = Boolean(API_KEY && MODEL);
+export const aiConfigured = true;
+export const aiModel = remoteAiConfigured ? MODEL : localModelName;
+function cap(value, size) { return String(value ?? '').slice(0, size); }
+function extractText(data) { const choice=data?.choices?.[0]; if(typeof choice?.message?.content==='string')return choice.message.content.trim(); if(Array.isArray(choice?.message?.content))return choice.message.content.map(x=>typeof x==='string'?x:x?.text||'').join('').trim(); if(typeof data?.output_text==='string')return data.output_text.trim(); return ''; }
+async function callRemote(messages,maxTokens=1800){ if(!remoteAiConfigured)return null; const controller=new AbortController(); const timer=setTimeout(()=>controller.abort(),TIMEOUT_MS); try{const response=await fetch(API_URL,{method:'POST',signal:controller.signal,headers:{'content-type':'application/json',authorization:`Bearer ${API_KEY}`},body:JSON.stringify({model:MODEL,messages,temperature:0.7,max_tokens:maxTokens})}); const raw=await response.text(); let data; try{data=JSON.parse(raw)}catch{data={error:{message:raw.slice(0,500)}}} if(!response.ok)throw new Error(`AI provider ${response.status}: ${data?.error?.message||'request failed'}`); const result=extractText(data); if(!result)throw new Error('AI provider returned an empty response'); return result;}finally{clearTimeout(timer)}}
+function buildMessages({prompt,memoryText,context,mode}){const system=['Tu es le cerveau d’Et Si? AI, une IA conversationnelle spécialisée dans le raisonnement et les réalités alternatives.','Comprends la question avant de répondre. Ne répète pas mécaniquement les mêmes phrases.','Utilise la mémoire comme un état du monde, pas comme du texte à recopier.','Si la question change de sujet, traite-la comme une nouvelle question sans mélanger les scénarios.','Pour une réalité alternative, respecte les hypothèses, déduis les conséquences et conserve une chronologie cohérente.','Ne prétends jamais avoir fait une recherche que tu n’as pas faite.','Réponds naturellement en français sauf demande contraire.',`Mode : ${mode||'Long'}.`].join('\n'); const user=[`QUESTION:\n${cap(prompt,MAX_AI_PROMPT)}`,`MEMOIRE:\n${cap(memoryText,MAX_AI_MEMORY)||'Aucune mémoire : nouvelle conversation ou nouveau scénario.'}`,`CONTEXTE:\n${cap(context,MAX_AI_CONTEXT)||'Aucun contexte externe.'}`,'Réponds maintenant. Ne recommence pas inutilement une histoire déjà commencée et réponds précisément à la dernière question.'].join('\n\n'); return [{role:'system',content:system},{role:'user',content:user}];}
+export async function generateWithAI({prompt,memoryText,context,mode}){const messages=buildMessages({prompt,memoryText,context,mode}); if(remoteAiConfigured){try{const remote=await callRemote(messages,mode==='Long'?2200:1200); if(remote)return remote;}catch(error){console.error('Remote AI failed; using local model:',error?.message||error)}} return generateLocal(messages,mode==='Long'?850:500);}
+export async function providerStatus(){return {remoteConfigured:remoteAiConfigured,remoteModel:MODEL||null,local:await localModelStatus()};}

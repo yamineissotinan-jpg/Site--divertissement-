@@ -1,57 +1,38 @@
 import fs from 'node:fs/promises';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { getLlama, LlamaChatSession } from 'node-llama-cpp';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const MODEL_PATH = process.env.LOCAL_MODEL_PATH || path.join(__dirname, 'models', 'qwen2.5-0.5b-instruct-q4_0.gguf');
-const MODEL_NAME = process.env.LOCAL_MODEL_NAME || 'Qwen2.5-0.5B-Instruct-Q4_0-GGUF';
+const MODEL_PATH = process.env.LOCAL_MODEL_PATH || '/var/data/etsi-ai/mixtral-8x7b-instruct-v0.1.Q3_K_M.gguf';
+const MODEL_NAME = process.env.LOCAL_MODEL_NAME || 'Mixtral-8x7B-Instruct-v0.1-Q3_K_M-GGUF-47B';
 const CONTEXT_SIZE = Number(process.env.LOCAL_CONTEXT_SIZE || 2048);
-const THREADS = Number(process.env.LOCAL_THREADS || Math.max(1, Math.min(4, Number(process.env.npm_config_jobs || 2))));
+const THREADS = Number(process.env.LOCAL_THREADS || 8);
+const MIN_MODEL_BYTES = Number(process.env.MODEL_MIN_BYTES || 19_000_000_000);
 
 let llama;
 let model;
-let context;
-let session;
 let loading;
-
 export const localModelName = MODEL_NAME;
 
+async function getFileSize() { try { return (await fs.stat(MODEL_PATH)).size; } catch { return 0; } }
 async function ensureModel() {
-  try {
-    await fs.access(MODEL_PATH);
-  } catch {
-    throw new Error(`Local model file missing: ${MODEL_PATH}`);
-  }
+  const size = await getFileSize();
+  if (size < MIN_MODEL_BYTES) throw new Error(`Local 47B model is missing or incomplete: ${MODEL_PATH} (${size} bytes). Run npm run download-model first.`);
 }
-
-export async function getLocalSession() {
-  if (session) return session;
+async function getLocalModel() {
+  if (model) return model;
   if (loading) return loading;
-  loading = (async () => {
-    await ensureModel();
-    llama = await getLlama();
-    model = await llama.loadModel({ modelPath: MODEL_PATH });
-    context = await model.createContext({ contextSize: CONTEXT_SIZE, threads: THREADS });
-    session = new LlamaChatSession({ contextSequence: context.getSequence() });
-    return session;
-  })();
+  loading = (async () => { await ensureModel(); llama = await getLlama(); return llama.loadModel({ modelPath: MODEL_PATH }); })();
+  try { model = await loading; return model; } finally { loading = null; }
+}
+export async function generateLocal(messages, maxTokens = 700) {
+  const loaded = await getLocalModel();
+  const context = await loaded.createContext({ contextSize: CONTEXT_SIZE, threads: THREADS });
   try {
-    return await loading;
-  } finally {
-    loading = null;
-  }
+    const session = new LlamaChatSession({ contextSequence: context.getSequence() });
+    const prompt = messages.map(m => `${String(m.role || 'user').toUpperCase()}:\n${m.content}`).join('\n\n');
+    return (await session.prompt(prompt, { maxTokens, temperature: 0.65, topP: 0.9 })).trim();
+  } finally { try { await context.dispose(); } catch {} }
 }
-
-export async function generateLocal(messages, maxTokens = 900) {
-  const session = await getLocalSession();
-  const prompt = messages.map(m => `${m.role.toUpperCase()}:\n${m.content}`).join('\n\n');
-  return (await session.prompt(prompt, { maxTokens, temperature: 0.65, topP: 0.9 })).trim();
-}
-
 export async function localModelStatus() {
-  let exists = true;
-  try { await fs.access(MODEL_PATH); } catch { exists = false; }
-  return { model: MODEL_NAME, path: MODEL_PATH, downloaded: exists, loaded: Boolean(session), contextSize: CONTEXT_SIZE };
+  const size = await getFileSize();
+  return { model: MODEL_NAME, path: MODEL_PATH, downloaded: size >= MIN_MODEL_BYTES, loaded: Boolean(model), bytes: size, sizeGB: Number((size / 1e9).toFixed(2)), minBytes: MIN_MODEL_BYTES, contextSize: CONTEXT_SIZE, threads: THREADS };
 }

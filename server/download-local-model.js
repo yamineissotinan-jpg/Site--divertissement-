@@ -1,33 +1,40 @@
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import { pipeline } from 'node:stream/promises';
-import { fileURLToPath } from 'node:url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const modelsDir = path.join(__dirname, 'models');
-const modelPath = path.join(modelsDir, 'qwen2.5-0.5b-instruct-q4_0.gguf');
-const url = process.env.LOCAL_MODEL_URL || 'https://huggingface.co/second-state/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/Qwen2.5-0.5B-Instruct-Q4_0.gguf?download=true';
-
-await fsp.mkdir(modelsDir, { recursive: true });
-try {
-  const stat = await fsp.stat(modelPath);
-  if (stat.size > 300_000_000) {
-    console.log(`Local model already present (${Math.round(stat.size / 1e6)} MB)`);
-    process.exit(0);
-  }
-} catch {}
-
-console.log('Downloading local Qwen model...');
-const response = await fetch(url, { redirect: 'follow' });
-if (!response.ok || !response.body) throw new Error(`Model download failed: HTTP ${response.status}`);
-const tmp = `${modelPath}.part`;
-await pipeline(response.body, fs.createWriteStream(tmp));
-const stat = await fsp.stat(tmp);
-if (stat.size < 300_000_000) {
-  await fsp.rm(tmp, { force: true });
-  throw new Error(`Downloaded model is unexpectedly small: ${stat.size} bytes`);
+const dir = process.env.LOCAL_MODEL_DIR || '/var/data/etsi-ai';
+const file = process.env.LOCAL_MODEL_PATH || path.join(dir, 'mixtral-8x7b-instruct-v0.1.Q3_K_M.gguf');
+const url = process.env.LOCAL_MODEL_URL || 'https://huggingface.co/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF/resolve/main/mixtral-8x7b-instruct-v0.1.Q3_K_M.gguf?download=true';
+const MIN_BYTES = Number(process.env.MODEL_MIN_BYTES || 19_000_000_000);
+async function statSize(target) { try { return (await fsp.stat(target)).size; } catch { return 0; } }
+async function download() {
+  await fsp.mkdir(path.dirname(file), { recursive: true });
+  const existing = await statSize(file);
+  if (existing >= MIN_BYTES) { console.log(`Model already present: ${file} (${(existing / 1e9).toFixed(2)} GB)`); return; }
+  const temp = `${file}.part`;
+  const partial = await statSize(temp);
+  const headers = partial > 0 ? { Range: `bytes=${partial}-` } : {};
+  console.log(`47B-class model target: ${file}`);
+  console.log(`Existing partial data: ${(partial / 1e9).toFixed(2)} GB`);
+  const response = await fetch(url, { redirect: 'follow', headers });
+  if (!response.ok || !response.body) throw new Error(`Model download failed: HTTP ${response.status}`);
+  const totalHeader = Number(response.headers.get('content-length') || 0);
+  const total = response.status === 206 && totalHeader ? partial + totalHeader : totalHeader;
+  if (partial > 0 && response.status !== 206) { console.log('Server did not resume the partial download; restarting from zero.'); await fsp.rm(temp, { force: true }); }
+  const append = partial > 0 && response.status === 206;
+  const out = fs.createWriteStream(temp, { flags: append ? 'a' : 'w' });
+  let received = append ? partial : 0;
+  let lastLog = Date.now();
+  try {
+    for await (const chunk of response.body) {
+      if (!out.write(chunk)) await new Promise(resolve => out.once('drain', resolve));
+      received += chunk.length;
+      if (Date.now() - lastLog > 5000) { const pct = total ? ` ${(received / total * 100).toFixed(1)}%` : ''; console.log(`Model download: ${(received / 1e9).toFixed(2)} GB${total ? ` / ${(total / 1e9).toFixed(2)} GB` : ''}${pct}`); lastLog = Date.now(); }
+    }
+  } finally { await new Promise(resolve => out.end(resolve)); }
+  const finalSize = await statSize(temp);
+  if (finalSize < MIN_BYTES) throw new Error(`Downloaded model is unexpectedly small: ${finalSize} bytes`);
+  await fsp.rename(temp, file);
+  console.log(`Model download complete: ${(finalSize / 1e9).toFixed(2)} GB`);
 }
-await fsp.rename(tmp, modelPath);
-console.log(`Local model ready: ${Math.round(stat.size / 1e6)} MB`);
+download().catch(error => { console.error(error); process.exit(1); });
