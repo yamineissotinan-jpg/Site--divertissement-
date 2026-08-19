@@ -5,10 +5,10 @@ import { getLlama, LlamaChatSession } from 'node-llama-cpp';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const MODEL_PATH = process.env.LOCAL_MODEL_PATH || path.join(__dirname, 'models', 'qwen2.5-0.5b-instruct-q4_0.gguf');
-const MODEL_NAME = process.env.LOCAL_MODEL_NAME || 'Qwen2.5-0.5B-Instruct-Q4_0-GGUF';
-const CONTEXT_SIZE = Number(process.env.LOCAL_CONTEXT_SIZE || 2048);
-const THREADS = Number(process.env.LOCAL_THREADS || 2);
+const MODEL_PATH = process.env.LOCAL_MODEL_PATH || path.join(__dirname, 'models', 'mixtral-8x7b-instruct-v0.1.Q2_K.gguf');
+const MODEL_NAME = process.env.LOCAL_MODEL_NAME || 'Mixtral-8x7B-Instruct-v0.1-Q2_K-GGUF (47B-class)';
+const CONTEXT_SIZE = Number(process.env.LOCAL_CONTEXT_SIZE || 4096);
+const THREADS = Number(process.env.LOCAL_THREADS || Math.max(2, Number(process.env.npm_config_threads || 4)));
 
 let llama;
 let model;
@@ -18,7 +18,7 @@ export const localModelName = MODEL_NAME;
 
 async function ensureModel() {
   try { await fs.access(MODEL_PATH); }
-  catch { throw new Error(`Local model file missing: ${MODEL_PATH}`); }
+  catch { throw new Error(`Local 47B-class model file missing: ${MODEL_PATH}. Run npm run download-model first.`); }
 }
 
 async function getLocalModel() {
