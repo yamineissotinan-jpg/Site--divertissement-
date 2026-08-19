@@ -1,15 +1,12 @@
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 const dir = process.env.LOCAL_MODEL_DIR || '/var/data/etsi-ai';
-const defaultFile = path.join(dir, 'mixtral-8x7b-instruct-v0.1.Q2_K.gguf');
+const defaultFile = path.join(dir, 'mixtral-8x7b-instruct-v0.1.Q3_K_M.gguf');
 const file = process.env.LOCAL_MODEL_PATH || defaultFile;
-const url = process.env.LOCAL_MODEL_URL || 'https://huggingface.co/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF/resolve/main/mixtral-8x7b-instruct-v0.1.Q2_K.gguf?download=true';
-const MIN_BYTES = Number(process.env.MODEL_MIN_BYTES || 15_000_000_000);
+const url = process.env.LOCAL_MODEL_URL || 'https://huggingface.co/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF/resolve/main/mixtral-8x7b-instruct-v0.1.Q3_K_M.gguf?download=true';
+const MIN_BYTES = Number(process.env.MODEL_MIN_BYTES || 19_000_000_000);
 
 async function statSize(target) {
   try { return (await fsp.stat(target)).size; } catch { return 0; }
@@ -28,6 +25,7 @@ async function download() {
   const headers = partial > 0 ? { Range: `bytes=${partial}-` } : {};
   console.log(`47B-class model target: ${file}`);
   console.log(`Existing partial data: ${(partial / 1e9).toFixed(2)} GB`);
+
   const response = await fetch(url, { redirect: 'follow', headers });
   if (!response.ok || !response.body) throw new Error(`Model download failed: HTTP ${response.status}`);
 
