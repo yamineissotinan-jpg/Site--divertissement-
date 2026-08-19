@@ -4,8 +4,9 @@
   "type": "module",
   "engines": { "node": ">=18" },
   "scripts": {
+    "preflight": "node preflight.js",
     "download-model": "node download-local-model.js",
-    "prestart": "npm run download-model",
+    "prestart": "npm run preflight && npm run download-model",
     "start": "node app.js"
   },
   "dependencies": {
