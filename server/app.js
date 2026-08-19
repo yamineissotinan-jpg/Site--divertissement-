@@ -3,7 +3,7 @@ import cors from 'cors';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { aiConfigured, aiModel, generateWithAI } from './ai-provider.js';
+import { aiConfigured, aiModel, generateWithAI, providerStatus } from './ai-provider.js';
 
 const app = express();
 const PORT = Number(process.env.PORT || 10000);
@@ -181,7 +181,14 @@ function runMemorySelfTest() {
 
 const MEMORY_BRIDGE = `<script>(function(){const K='etsi_narrative_memory_v2';const oldFetch=window.fetch.bind(window);window.fetch=async function(input,init){let gen=false;try{const u=typeof input==='string'?input:input.url||'';gen=u.endsWith('/generate');if(gen&&init&&init.body){const b=JSON.parse(init.body);const m=localStorage.getItem(K);if(m)b.memory=m;init={...init,body:JSON.stringify(b)}}}catch(e){}const r=await oldFetch(input,init);if(gen){try{const j=await r.clone().json();if(j?.memory)localStorage.setItem(K,JSON.stringify(j.memory))}catch(e){}}return r};document.addEventListener('click',e=>{if(e.target?.id==='new')localStorage.removeItem(K)});})();</script>`;
 
-app.get('/health', (_req,res) => res.json({ ok:true, model:MODEL, engine:ENGINE, status:'healthy', aiConfigured }));
+app.get('/health', async (_req,res) => {
+  try {
+    const status = await providerStatus();
+    res.json({ ok:true, model:MODEL, engine:ENGINE, status:'healthy', aiConfigured, local:status.local, remoteConfigured:status.remoteConfigured });
+  } catch (error) {
+    res.status(503).json({ ok:false, model:MODEL, engine:ENGINE, status:'degraded', error:cap(error?.message||error,500) });
+  }
+});
 app.get('/test', async (_req,res) => { const r=await generateHybrid('Et si tous les humains disparaissaient demain ?','Test','',null); res.json({ok:true,model:MODEL,engine:ENGINE,type:r.type,mode:'Test',text:cap(r.text,MAX_OUTPUT),research:[],memory:compactMemory('Et si tous les humains disparaissaient demain ?',r.type,null,r.text),provider:r.provider}); });
 app.get('/test/memory', (_req,res) => res.json(runMemorySelfTest()));
 app.get('/test/ai', async (_req,res) => { if(!aiConfigured)return res.json({ok:true,configured:false,message:'AI_API_KEY and AI_MODEL are not configured; local fallback is active.'}); try { const r=await generateWithAI({prompt:'Réponds en une phrase: quel est le principe d’une réalité alternative ?',memoryText:'',context:'',mode:'Short'}); res.json({ok:Boolean(r),configured:true,model:aiModel,preview:cap(r||'',500)}); } catch(e) { res.status(502).json({ok:false,configured:true,error:'ai_provider_failed',detail:cap(e?.message||e,500)}); } });
