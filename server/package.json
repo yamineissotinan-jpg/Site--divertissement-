@@ -5,7 +5,6 @@
   "engines": { "node": ">=18" },
   "scripts": {
     "download-model": "node download-local-model.js",
-    "postinstall": "npm run download-model",
     "prestart": "npm run download-model",
     "start": "node app.js"
   },
