@@ -1,15 +1,11 @@
 import fs from 'node:fs/promises';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { getLlama, LlamaChatSession } from 'node-llama-cpp';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const MODEL_PATH = process.env.LOCAL_MODEL_PATH || '/var/data/etsi-ai/mixtral-8x7b-instruct-v0.1.Q2_K.gguf';
-const MODEL_NAME = process.env.LOCAL_MODEL_NAME || 'Mixtral-8x7B-Instruct-v0.1-Q2_K-GGUF-47B';
+const MODEL_PATH = process.env.LOCAL_MODEL_PATH || '/var/data/etsi-ai/mixtral-8x7b-instruct-v0.1.Q3_K_M.gguf';
+const MODEL_NAME = process.env.LOCAL_MODEL_NAME || 'Mixtral-8x7B-Instruct-v0.1-Q3_K_M-GGUF-47B';
 const CONTEXT_SIZE = Number(process.env.LOCAL_CONTEXT_SIZE || 2048);
 const THREADS = Number(process.env.LOCAL_THREADS || 8);
-const MIN_MODEL_BYTES = Number(process.env.MODEL_MIN_BYTES || 15_000_000_000);
+const MIN_MODEL_BYTES = Number(process.env.MODEL_MIN_BYTES || 19_000_000_000);
 
 let llama;
 let model;
@@ -41,8 +37,8 @@ async function getLocalModel() {
 }
 
 export async function generateLocal(messages, maxTokens = 700) {
-  const model = await getLocalModel();
-  const context = await model.createContext({ contextSize: CONTEXT_SIZE, threads: THREADS });
+  const loaded = await getLocalModel();
+  const context = await loaded.createContext({ contextSize: CONTEXT_SIZE, threads: THREADS });
   try {
     const session = new LlamaChatSession({ contextSequence: context.getSequence() });
     const prompt = messages.map(m => `${String(m.role || 'user').toUpperCase()}:\n${m.content}`).join('\n\n');
