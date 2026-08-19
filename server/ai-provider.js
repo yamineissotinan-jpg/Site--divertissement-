@@ -8,8 +8,11 @@ const MAX_AI_PROMPT = 6500;
 const MAX_AI_MEMORY = 1800;
 const MAX_AI_CONTEXT = 1000;
 
-export const aiConfigured = Boolean(API_KEY && MODEL);
-export const aiModel = aiConfigured ? MODEL : localModelName;
+// The local model is always available as the real no-API brain.
+// A remote provider is optional and can be used when explicitly configured.
+export const remoteAiConfigured = Boolean(API_KEY && MODEL);
+export const aiConfigured = true;
+export const aiModel = remoteAiConfigured ? MODEL : localModelName;
 
 function cap(value, size) { return String(value ?? '').slice(0, size); }
 
@@ -22,7 +25,7 @@ function extractText(data) {
 }
 
 async function callRemote(messages, maxTokens = 1800) {
-  if (!aiConfigured) return null;
+  if (!remoteAiConfigured) return null;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
@@ -62,7 +65,7 @@ function buildMessages({ prompt, memoryText, context, mode }) {
 
 export async function generateWithAI({ prompt, memoryText, context, mode }) {
   const messages = buildMessages({ prompt, memoryText, context, mode });
-  if (aiConfigured) {
+  if (remoteAiConfigured) {
     try {
       const remote = await callRemote(messages, mode === 'Long' ? 2200 : 1200);
       if (remote) return remote;
@@ -74,5 +77,5 @@ export async function generateWithAI({ prompt, memoryText, context, mode }) {
 }
 
 export async function providerStatus() {
-  return { remoteConfigured: aiConfigured, remoteModel: MODEL || null, local: await localModelStatus() };
+  return { remoteConfigured: remoteAiConfigured, remoteModel: MODEL || null, local: await localModelStatus() };
 }
