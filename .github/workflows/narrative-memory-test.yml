@@ -21,29 +21,35 @@ jobs:
       - name: Install dependencies
         working-directory: server
         run: npm install --no-audit --no-fund
-      - name: Start server
+      - name: Start server with local model bootstrap
         working-directory: server
         env:
           PORT: 10000
         run: |
-          node app.js > /tmp/etsi-server.log 2>&1 &
+          npm start > /tmp/etsi-server.log 2>&1 &
           echo $! > /tmp/etsi-server.pid
-          for i in {1..30}; do
+          for i in {1..90}; do
             if curl -fsS http://127.0.0.1:10000/health >/dev/null; then exit 0; fi
             sleep 1
           done
           cat /tmp/etsi-server.log
           exit 1
+      - name: Verify local model generation
+        run: |
+          response=$(curl --max-time 120 -fsS http://127.0.0.1:10000/test)
+          echo "$response" | head -c 3000
+          echo
+          node -e 'const r=JSON.parse(process.argv[1]); if(!r.ok || !r.text || r.provider !== "model"){console.error("Local model generation failed", r); process.exit(1)}' "$response"
       - name: Run narrative memory self-test
         run: |
           response=$(curl -fsS http://127.0.0.1:10000/test/memory)
           echo "$response"
           node -e 'const r=JSON.parse(process.argv[1]); if(!r.ok){console.error("Self-test failed", r); process.exit(1)}' "$response"
-      - name: Run hybrid provider smoke test
+      - name: Verify AI endpoint
         run: |
-          response=$(curl -fsS http://127.0.0.1:10000/health)
+          response=$(curl --max-time 120 -fsS http://127.0.0.1:10000/test/ai)
           echo "$response"
-          node -e 'const r=JSON.parse(process.argv[1]); if(!r.ok || !r.model){process.exit(1)}' "$response"
+          node -e 'const r=JSON.parse(process.argv[1]); if(!r.ok || !r.configured || !r.preview){console.error("AI endpoint failed", r); process.exit(1)}' "$response"
       - name: Stop server
         if: always()
         run: |
